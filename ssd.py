@@ -30,11 +30,11 @@ class SSD:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([layers.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
                 net = slim.repeat(inputs, 2, layers.conv2d, 64, [3, 3], scope='conv1')
-                net = slim.max_pool2d(net, [2, 2], scope='pool1')
+                net = slim.max_pool2d(net, [2, 2], scope='pool1')   # 150x150
                 net = slim.repeat(net, 2, layers.conv2d, 128, [3, 3], scope='conv2')
-                net = slim.max_pool2d(net, [2, 2], scope='pool2')
+                net = slim.max_pool2d(net, [2, 2], scope='pool2')   # 75x75
                 net = slim.repeat(net, 3, layers.conv2d, 256, [3, 3], scope='conv3')
-                net = slim.max_pool2d(net, [2, 2], scope='pool3')
+                net = slim.max_pool2d(net, [2, 2], scope='pool3')   # 38x38
                 net = slim.repeat(net, 3, layers.conv2d, 512, [3, 3], scope='conv4')
                 net = slim.max_pool2d(net, [2, 2], scope='pool4')
                 net = slim.repeat(net, 3, layers.conv2d, 512, [3, 3], scope='conv5')
@@ -59,9 +59,16 @@ class SSD:
                 self.net = slim.conv2d(self.net, 256, [1, 1], scope='conv8_1')
                 self.net = slim.conv2d(self.net, 512, [3, 3], stride=2, scope='conv8_2')
 
+                self.net = slim.conv2d(self.net, 128, [1, 1], scope='conv9_1')
+                self.net = slim.conv2d(self.net, 256, [3, 3], stride=2, scope='conv9_2')
+
+                self.net = slim.conv2d(self.net, 128, [1, 1], scope='conv10_1')
+                self.net = slim.conv2d(self.net, 256, [3, 3], scope='conv10_2')
+
+                self.net = slim.conv2d(self.net, 128, [1, 1], scope='conv11_1')
+                self.net = slim.conv2d(self.net, 256, [3, 3], scope='conv11_2')
 
         pass
-
 
 
 def build_graph_train(checkpoint_load_path=None):
