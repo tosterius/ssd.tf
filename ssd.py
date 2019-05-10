@@ -64,26 +64,26 @@ class SSD:
     def __init_vgg_16_part(self, inputs, scope='vgg_16'):
         with variable_scope.variable_scope(scope, 'vgg_16', [inputs]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
-            with slim.arg_scope([layers.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
-                self.net = slim.repeat(inputs, 2, layers.conv2d, 64, [3, 3], scope='conv1')
+            with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
+                self.net = slim.repeat(inputs, 2, slim.conv2d, 64, [3, 3], scope='conv1')
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool1')   # 150x150
-                self.net = slim.repeat(self.net, 2, layers.conv2d, 128, [3, 3], scope='conv2')
+                self.net = slim.repeat(self.net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool2')   # 75x75
-                self.net = slim.repeat(self.net, 3, layers.conv2d, 256, [3, 3], scope='conv3')
-                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool3')   # 38x38
-                self.net = slim.repeat(self.net, 3, layers.conv2d, 512, [3, 3], scope='conv4')
+                self.net = slim.repeat(self.net, 3, slim.conv2d, 256, [3, 3], scope='conv3')
+                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool3', padding='SAME')   # 38x38
+                self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv4')
                 self.feature_maps.append(self.net)
-                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool4')
-                self.net = slim.repeat(self.net, 3, layers.conv2d, 512, [3, 3], scope='conv5')
+                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool4', padding='SAME')
+                self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv5')
 
                 self.vgg_end_points = utils.convert_collection_to_dict(end_points_collection)
 
     def __init_ssd_300_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.6):
         with variable_scope.variable_scope(scope, 'ssd_300', [self.net]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
-            with slim.arg_scope([layers.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
+            with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
 
-                self.net = slim.max_pool2d(self.net, [3, 3], stride=1, scope='pool5')
+                self.net = slim.max_pool2d(self.net, [3, 3], stride=1, scope='pool5', padding='SAME')
 
                 self.net = slim.conv2d(self.net, 1024, [3, 3], rate=6, scope='conv6')
                 self.net = tf.layers.dropout(self.net, rate=dropout_keep_prob, training=is_training)
@@ -98,10 +98,10 @@ class SSD:
                 self.net = slim.conv2d(self.net, 256, [3, 3], stride=2, scope='conv9_2')
                 self.feature_maps.append(self.net)
                 self.net = slim.conv2d(self.net, 128, [1, 1], scope='conv10_1')
-                self.net = slim.conv2d(self.net, 256, [3, 3], scope='conv10_2')
+                self.net = slim.conv2d(self.net, 256, [3, 3], scope='conv10_2', padding='VALID')
                 self.feature_maps.append(self.net)
                 self.net = slim.conv2d(self.net, 128, [1, 1], scope='conv11_1')
-                self.net = slim.conv2d(self.net, 256, [3, 3], scope='conv11_2')
+                self.net = slim.conv2d(self.net, 256, [3, 3], scope='conv11_2', padding='VALID')
                 self.feature_maps.append(self.net)
                 self.ssd_end_points = utils.convert_collection_to_dict(end_points_collection)
 
