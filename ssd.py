@@ -27,7 +27,7 @@ def conv_l2_norm(tensor, depth, layer_hw, name):
         w = tf.get_variable("filter", shape=[3, 3, tensor.get_shape()[3], depth],
                             initializer=tf.contrib.layers.xavier_initializer())
         b = tf.Variable(tf.zeros(depth), name='biases')
-        x = tf.layers.conv2d(tensor, w, strides=[1, 1, 1, 1], padding='SAME')
+        x = tf.nn.conv2d(tensor, w, strides=[1, 1, 1, 1], padding='SAME')
         x = tf.nn.bias_add(x, b)
         x = tf.reshape(x, [-1, layer_hw[0] * layer_hw[1], depth])
         l2_norm = tf.nn.l2_loss(w)
