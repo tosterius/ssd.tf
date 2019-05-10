@@ -14,7 +14,7 @@ Profile = namedtuple('Profile', ['n_classes', 'maps'])
 MapParams = namedtuple('MapParams', ['size', 'scale', 'n_bboxes', 'ratios'])
 
 
-voc_ssd_300 = Profile(n_classes=20, maps=[MapParams((38, 38), 0.2, 4, [1.0, 1.0, 2.0, 1.0/2.0]),
+voc_ssd_300 = Profile(n_classes=21, maps=[MapParams((38, 38), 0.2, 4, [1.0, 1.0, 2.0, 1.0/2.0]),
                                           MapParams((19, 19), 0.34, 6, [1.0, 1.0, 2.0, 1.0/2.0, 3.0, 1.0/3.0]),
                                           MapParams((10, 10), 0.48, 6, [1.0, 1.0, 2.0, 1.0/2.0, 3.0, 1.0/3.0]),
                                           MapParams((5, 5), 0.62, 6, [1.0, 1.0, 2.0, 1.0/2.0, 3.0, 1.0/3.0]),
