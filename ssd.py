@@ -1,6 +1,5 @@
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-import tensorflow.contrib.layers as layers
 from tensorflow.python.ops import variable_scope
 from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.contrib.framework import get_variables_to_restore
@@ -40,6 +39,8 @@ class SSD:
         self.feature_maps = []
         self.profile = profile
         self.l2_norm = 0
+        self.label_dim = self.profile.n_classes + 4     # 4 bbox coords
+        self.gt = None  # looks like [y_0, y_1, .., y_num_of_classes, box_xc, box_yx, box_w, box_h]
 
         self.logits = None
         self.classifier = None
@@ -106,23 +107,69 @@ class SSD:
                 self.ssd_end_points = utils.convert_collection_to_dict(end_points_collection)
 
     def __init_detection_layers(self):
-        det_dim = self.profile.n_classes + 4    # 4 bbox coords
-
         output = []
         with tf.variable_scope('classifiers'):
             for i, feature_map in enumerate(self.feature_maps):
                 mp = self.profile.maps[i]
                 for j in range(mp.n_bboxes):
-                    c, norm = conv_l2_norm(feature_map, det_dim, mp.size, 'classifier%d_%d' % (i, j))
+                    c, norm = conv_l2_norm(feature_map, self.label_dim, mp.size, 'classifier%d_%d' % (i, j))
                     output.append(c)
                     self.l2_norm += norm
 
         with tf.variable_scope('output'):
             output = tf.concat(output, axis=1, name='output')
+            self.n_anchors = tf.shape(output, out_type=tf.int64)[0]
             self.logits = output[:, :, :self.profile.n_classes]
             self.classifier = tf.nn.softmax(self.logits)
             self.detector = output[:, :, self.profile.n_classes:]
             self.result = tf.concat([self.classifier, self.detector], axis=-1, name='result')
+
+    def init_optimizer(self, global_step=None):
+        self.gt = tf.placeholder(tf.float32, name='labels', shape=[None, None, self.label_dim])
+
+        batch_size = tf.shape(self.gt)[0]
+
+        with tf.variable_scope('gt'):
+            gt_labels = self.gt[:, :, :self.profile.n_classes]
+            gt_rects = self.gt[:, :, self.profile.n_classes:]
+
+        with tf.variable_scope('counters'):
+            n_total = tf.ones([batch_size], dtype=tf.int64) * self.n_anchors
+            n_negative = tf.count_nonzero(gt_labels[:, :, -1], axis=1)
+            n_positive = n_total - n_negative
+
+        with tf.variable_scope('masks'):
+            positives_mask = tf.equal(gt_labels[:, :, -1], 0)
+            negatives_mask = tf.not_equal(gt_labels[:, :, -1], 0)
+
+        with tf.variable_scope('confidence_loss'):
+            ce = tf.nn.softmax_cross_entropy_with_logits_v2(gt_labels, self.logits)
+            positive_losses = tf.where(positives_mask, ce, tf.zeros_like(ce))
+            positive_total_loss = tf.reduce_sum(positive_losses, axis=-1)
+
+            negative_losses = tf.where(negatives_mask, ce, tf.zeros_like(ce))
+            negative_top_k = tf.nn.top_k(negative_losses, tf.cast(self.n_anchors, dtype=tf.int32))[0]
+
+            # Instead of using all the negative examples, we sort them using the highest
+            # confidence loss for each default box and pick the top ones so that the ratio
+            # between the negatives and positives is at most 3:1.
+            n_max_negative_per_sample = tf.minimum(n_negative, 3 * n_positive)
+
+            n_max_negative_per_sample_t = tf.expand_dims(n_max_negative_per_sample, 1)
+            rng = tf.range(0, self.n_anchors, 1)
+            range_row = tf.to_int64(tf.expand_dims(rng, 0))
+            negatives_max_mask = tf.less(range_row, n_max_negative_per_sample_t)
+
+            negatives_max = tf.where(negatives_max_mask, negative_top_k, tf.zeros_like(negative_top_k))
+            negatives_total_loss = tf.reduce_sum(negatives_max, axis=-1)
+
+            confidence_loss = tf.add(positive_total_loss, negatives_total_loss)
+
+            confidence_loss = tf.where(tf.equal(n_positive, 0),
+                                       tf.zeros([batch_size]),
+                                       tf.div_no_nan(confidence_loss, tf.cast(n_positive, dtype=tf.float32)))
+
+            self.confidence_loss = tf.reduce_mean(confidence_loss, name='confidence_loss')
 
 
 def build_graph_train(checkpoint_load_path=None):
@@ -132,6 +179,7 @@ def build_graph_train(checkpoint_load_path=None):
 
     with tf.Session(graph=graph) as session:
         ssd = SSD(input_x)
+        ssd.init_optimizer()
         ssd.build_with_vgg(session, checkpoint_load_path)
         for v in tf.get_default_graph().as_graph_def().node:
             print(v.name)
