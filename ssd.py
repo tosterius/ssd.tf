@@ -6,19 +6,15 @@ from tensorflow.contrib.framework import get_variables_to_restore
 from collections import namedtuple
 
 
-#http://download.tensorflow.org/models/vgg_16_2016_08_28.tar.gz
-
-
 Profile = namedtuple('Profile', ['n_classes', 'maps'])
 MapParams = namedtuple('MapParams', ['size', 'scale', 'n_bboxes', 'ratios'])
 
-
-voc_ssd_300 = Profile(n_classes=21, maps=[MapParams((38, 38), 0.2, 4, [1.0, 1.0, 2.0, 1.0/2.0]),
-                                          MapParams((19, 19), 0.34, 6, [1.0, 1.0, 2.0, 1.0/2.0, 3.0, 1.0/3.0]),
-                                          MapParams((10, 10), 0.48, 6, [1.0, 1.0, 2.0, 1.0/2.0, 3.0, 1.0/3.0]),
-                                          MapParams((5, 5), 0.62, 6, [1.0, 1.0, 2.0, 1.0/2.0, 3.0, 1.0/3.0]),
-                                          MapParams((3, 3), 0.76, 6, [1.0, 1.0, 2.0, 1.0/2.0, 3.0, 1.0/3.0]),
-                                          MapParams((1, 1), 0.9, 6, [1.0, 1.0, 2.0, 1.0/2.0, 3.0, 1.0/3.0])])
+voc_ssd_300 = Profile(n_classes=21, maps=[MapParams((38, 38), 0.2, 4, [1.0, 1.0, 2.0, 1.0 / 2.0]),
+                                          MapParams((19, 19), 0.34, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
+                                          MapParams((10, 10), 0.48, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
+                                          MapParams((5, 5), 0.62, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
+                                          MapParams((3, 3), 0.76, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
+                                          MapParams((1, 1), 0.9, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0])])
 
 
 def conv_with_l2_reg(tensor, depth, layer_hw, name):
@@ -47,7 +43,7 @@ class SSD:
         self.feature_maps = []
         self.profile = profile
 
-        self.label_dim = self.profile.n_classes + 4     # 4 bbox coords
+        self.label_dim = self.profile.n_classes + 4  # 4 bbox coords
 
         self.logits = None
         self.classifier = None
@@ -80,11 +76,11 @@ class SSD:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
                 self.net = slim.repeat(inputs, 2, slim.conv2d, 64, [3, 3], scope='conv1')
-                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool1')   # 150x150
+                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool1')  # 150x150
                 self.net = slim.repeat(self.net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
-                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool2')   # 75x75
+                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool2')  # 75x75
                 self.net = slim.repeat(self.net, 3, slim.conv2d, 256, [3, 3], scope='conv3')
-                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool3', padding='SAME')   # 38x38
+                self.net = slim.max_pool2d(self.net, [2, 2], scope='pool3', padding='SAME')  # 38x38
                 self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv4')
                 self.feature_maps.append(self.net)
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool4', padding='SAME')
@@ -96,7 +92,6 @@ class SSD:
         with variable_scope.variable_scope(scope, 'ssd_300', [self.net]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
-
                 self.net = slim.max_pool2d(self.net, [3, 3], stride=1, scope='pool5', padding='SAME')
 
                 self.net = slim.conv2d(self.net, 1024, [3, 3], rate=6, scope='conv6')
@@ -137,7 +132,7 @@ class SSD:
             self.detections = output[:, :, self.profile.n_classes:]
             self.result = tf.concat([self.classifier, self.detections], axis=-1, name='result')
 
-    def init_optimizer(self, global_step=None):
+    def init_loss(self):
         self.gt = tf.placeholder(tf.float32, name='labels', shape=[None, None, self.label_dim])
 
         batch_size = tf.shape(self.gt)[0]
@@ -194,13 +189,14 @@ class SSD:
             localization_loss = tf.reduce_sum(positive_localisation_loss_for_anchor, axis=-1)
             localization_loss = tf.where(tf.equal(n_positive, 0),
                                          tf.zeros([batch_size]),
-                                         tf.div_no_nan(localization_loss, n_positive))
+                                         tf.div_no_nan(localization_loss, tf.cast(n_positive, dtype=tf.float32)))
 
             self.localization_loss = tf.reduce_mean(localization_loss, name='localization_loss')
 
             with tf.variable_scope('total_loss'):
                 self.loss = tf.add(self.localization_loss, self.confidence_loss, name='loss')
 
+        return self.loss
 
 
 def build_graph_train(checkpoint_load_path=None):
@@ -210,12 +206,11 @@ def build_graph_train(checkpoint_load_path=None):
 
     with tf.Session(graph=graph) as session:
         ssd = SSD(input_x)
-        ssd.init_optimizer()
+        ssd.init_loss()
         ssd.build_with_vgg(session, checkpoint_load_path)
         for v in tf.get_default_graph().as_graph_def().node:
             print(v.name)
         pass
-
 
 
 build_graph_train('pretraned/vgg_16.ckpt')
