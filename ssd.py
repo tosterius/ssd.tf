@@ -21,7 +21,7 @@ voc_ssd_300 = Profile(n_classes=21, maps=[MapParams((38, 38), 0.2, 4, [1.0, 1.0,
                                           MapParams((1, 1), 0.9, 6, [1.0, 1.0, 2.0, 1.0/2.0, 3.0, 1.0/3.0])])
 
 
-def conv_l2_norm(tensor, depth, layer_hw, name):
+def conv_with_l2_reg(tensor, depth, layer_hw, name):
     with tf.variable_scope(name):
         w = tf.get_variable("filter", shape=[3, 3, tensor.get_shape()[3], depth],
                             initializer=tf.contrib.layers.xavier_initializer())
@@ -33,19 +33,32 @@ def conv_l2_norm(tensor, depth, layer_hw, name):
     return x, l2_norm
 
 
+def smooth_l1_loss(x):
+    """https://mohitjainweb.files.wordpress.com/2018/03/smoothl1loss.pdf"""
+    with tf.variable_scope('smooth_l1_loss'):
+        square_loss = 0.5 * tf.math.pow(x, 2)
+        abs_x = tf.abs(x)
+        return tf.where(tf.less(abs_x, 1.0), square_loss, abs_x - 0.5)
+
+
 class SSD:
     def __init__(self, input, profile=voc_ssd_300):
         self.net = None
         self.feature_maps = []
         self.profile = profile
-        self.l2_norm = 0
+
         self.label_dim = self.profile.n_classes + 4     # 4 bbox coords
-        self.gt = None  # looks like [y_0, y_1, .., y_num_of_classes, box_xc, box_yx, box_w, box_h]
 
         self.logits = None
         self.classifier = None
-        self.detector = None
+        self.detections = None
         self.result = None
+
+        self.l2_norm = 0
+        self.gt = None  # looks like [y_0, y_1, .., y_num_of_classes, box_xc, box_yx, box_w, box_h]
+        self.loss = None
+        self.confidence_loss = None
+        self.localization_loss = None
 
         self.__init_vgg_16_part(input)
         self.__init_ssd_300_part()
@@ -112,7 +125,7 @@ class SSD:
             for i, feature_map in enumerate(self.feature_maps):
                 mp = self.profile.maps[i]
                 for j in range(mp.n_bboxes):
-                    c, norm = conv_l2_norm(feature_map, self.label_dim, mp.size, 'classifier%d_%d' % (i, j))
+                    c, norm = conv_with_l2_reg(feature_map, self.label_dim, mp.size, 'classifier%d_%d' % (i, j))
                     output.append(c)
                     self.l2_norm += norm
 
@@ -121,8 +134,8 @@ class SSD:
             self.n_anchors = tf.shape(output, out_type=tf.int64)[0]
             self.logits = output[:, :, :self.profile.n_classes]
             self.classifier = tf.nn.softmax(self.logits)
-            self.detector = output[:, :, self.profile.n_classes:]
-            self.result = tf.concat([self.classifier, self.detector], axis=-1, name='result')
+            self.detections = output[:, :, self.profile.n_classes:]
+            self.result = tf.concat([self.classifier, self.detections], axis=-1, name='result')
 
     def init_optimizer(self, global_step=None):
         self.gt = tf.placeholder(tf.float32, name='labels', shape=[None, None, self.label_dim])
@@ -170,6 +183,24 @@ class SSD:
                                        tf.div_no_nan(confidence_loss, tf.cast(n_positive, dtype=tf.float32)))
 
             self.confidence_loss = tf.reduce_mean(confidence_loss, name='confidence_loss')
+
+        with tf.variable_scope('localization_loss'):
+            localization_loss = smooth_l1_loss(tf.subtract(self.detections, gt_rects))
+            localisation_loss_for_anchor = tf.reduce_sum(localization_loss, axis=-1)
+
+            positive_localisation_loss_for_anchor = tf.where(positives_mask, localisation_loss_for_anchor,
+                                                             tf.zeros_like(localisation_loss_for_anchor))
+
+            localization_loss = tf.reduce_sum(positive_localisation_loss_for_anchor, axis=-1)
+            localization_loss = tf.where(tf.equal(n_positive, 0),
+                                         tf.zeros([batch_size]),
+                                         tf.div_no_nan(localization_loss, n_positive))
+
+            self.localization_loss = tf.reduce_mean(localization_loss, name='localization_loss')
+
+            with tf.variable_scope('total_loss'):
+                self.loss = tf.add(self.localization_loss, self.confidence_loss, name='loss')
+
 
 
 def build_graph_train(checkpoint_load_path=None):
