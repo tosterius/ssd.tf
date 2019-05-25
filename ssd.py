@@ -1,3 +1,4 @@
+import  numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow.python.ops import variable_scope
@@ -6,15 +7,57 @@ from tensorflow.contrib.framework import get_variables_to_restore
 from collections import namedtuple
 
 
-Profile = namedtuple('Profile', ['n_classes', 'maps'])
+Profile = namedtuple('Profile', ['n_classes', 'max_scale', 'maps'])
 MapParams = namedtuple('MapParams', ['size', 'scale', 'n_bboxes', 'ratios'])
+DefaultBox = namedtuple('DefaultBox', ['xc', 'yc', 'w', 'h', 'fm_x', 'fm_y', 'scale', 'fm'])
 
-voc_ssd_300 = Profile(n_classes=21, maps=[MapParams((38, 38), 0.2, 4, [1.0, 1.0, 2.0, 1.0 / 2.0]),
-                                          MapParams((19, 19), 0.34, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
-                                          MapParams((10, 10), 0.48, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
-                                          MapParams((5, 5), 0.62, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
-                                          MapParams((3, 3), 0.76, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
-                                          MapParams((1, 1), 0.9, 6, [1.0, 1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0])])
+
+voc_ssd_300 = Profile(n_classes=21, max_scale=1.0,
+                      maps=[MapParams((38, 38), 0.2, 4, [1.0, 2.0, 1.0 / 2.0]),
+                            MapParams((19, 19), 0.34, 6, [1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
+                            MapParams((10, 10), 0.48, 6, [1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
+                            MapParams((5, 5), 0.62, 6, [1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
+                            MapParams((3, 3), 0.76, 6, [1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]),
+                            MapParams((1, 1), 0.9, 6, [1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0])])
+
+
+def get_default_boxes(profile):
+    """
+    Get sizes of default bounding boxes for every scale.
+    See https://arxiv.org/pdf/1512.02325.pdf page 6
+    :param profile:
+    :return:
+    """
+    n_maps = len(profile.maps)
+    box_sizes = []
+    for i in range(n_maps):
+        scale = profile.maps[i].scale
+        aspect_ratios = profile.maps[i].ratios
+        sizes_for_aspects = []
+        for acpect_ratio in aspect_ratios:
+            sqrt_ar = np.sqrt(acpect_ratio)
+            w = scale * sqrt_ar
+            h = scale / sqrt_ar
+            sizes_for_aspects.append((w, h))
+
+        # additional default box for the aspect ratio of 1:
+        add_scale_one = profile.maps[i + 1].scale if i < n_maps - 1 else profile.max_scale
+        s_prime = np.sqrt(scale * add_scale_one)
+        sizes_for_aspects.append((s_prime, s_prime))
+        box_sizes.append(sizes_for_aspects)
+
+    default_boxes = []
+    for k in range(n_maps):
+        # f_k is the size of the k-th feature map
+        f_k = profile.maps[k].size[0]
+        s = profile.maps[k].scale
+        for (w, h) in box_sizes[k]:
+            for j in range(f_k):
+                yc = (j + 0.5) / f_k
+                for i in range(f_k):
+                    xc = (i + 0.5) / f_k
+                    default_boxes.append(DefaultBox(xc, yc, w, h, i, j, s, k))
+    return default_boxes
 
 
 def conv_with_l2_reg(tensor, depth, layer_hw, name):
