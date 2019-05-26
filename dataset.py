@@ -4,8 +4,26 @@ import xml.etree.ElementTree as ET
 
 LabeledObject = namedtuple('LabeledObject', ['label', 'xc', 'yc', 'w', 'h'])
 LabeledImage = namedtuple('LabeledImage', ['filepath', 'size', 'objects'])
+Rect = namedtuple('Rect', ['x0', 'y0', 'x1', 'y1'])
+NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
 
 
+def normRect2rect(imgsize: tuple, rect: NormRect):
+    xc = rect.xc * imgsize[0]
+    yc = rect.yc * imgsize[1]
+    w_half = rect.w * imgsize[0] / 2
+    h_half = rect.h * imgsize[1] / 2
+    return Rect(int(xc - w_half), int(yc - h_half), int(xc + w_half), int(yc + h_half))
+
+
+def rect2normRect(imgsize: tuple, rect: Rect):
+    xc = (rect.x0 + rect.x1) / 2.0 / imgsize[0]
+    yc = (rect.y0 + rect.y1) / 2.0 / imgsize[1]
+    w = float(rect.x1 - rect.x0) / imgsize[0]
+    h = float(rect.y1 - rect.y0) / imgsize[1]
+    return NormRect(xc, yc, w, h)
+
+    
 class VocDataset:
     def __init__(self, root_directory=None):
         self.data = []
