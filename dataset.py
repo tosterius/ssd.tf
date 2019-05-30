@@ -1,14 +1,28 @@
 import os
-from collections import namedtuple
+import numpy as np
 import xml.etree.ElementTree as ET
+from collections import namedtuple
+
 
 LabeledObject = namedtuple('LabeledObject', ['label', 'xc', 'yc', 'w', 'h'])
 LabeledImage = namedtuple('LabeledImage', ['filepath', 'size', 'objects'])
-Rect = namedtuple('Rect', ['x0', 'y0', 'x1', 'y1'])
+
+
+class Rect:
+    def __init__(self, x0, y0, x1, y1):
+        self.x0, self.y0 = x0, y0
+        self.x1, self.y1 = x1, y1
+
+    def as_array(self):
+        return np.array([self.x0, self.y0, self.x1, self.y1])
+
+
 NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
 
+DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
 
-def normRect2rect(imgsize: tuple, rect: NormRect):
+
+def norm_rect_to_rect(imgsize: tuple, rect: NormRect):
     xc = rect.xc * imgsize[0]
     yc = rect.yc * imgsize[1]
     w_half = rect.w * imgsize[0] / 2
@@ -16,12 +30,21 @@ def normRect2rect(imgsize: tuple, rect: NormRect):
     return Rect(int(xc - w_half), int(yc - h_half), int(xc + w_half), int(yc + h_half))
 
 
-def rect2normRect(imgsize: tuple, rect: Rect):
+def rect_to_norm_rect(imgsize: tuple, rect: Rect):
     xc = (rect.x0 + rect.x1) / 2.0 / imgsize[0]
     yc = (rect.y0 + rect.y1) / 2.0 / imgsize[1]
     w = float(rect.x1 - rect.x0) / imgsize[0]
     h = float(rect.y1 - rect.y0) / imgsize[1]
     return NormRect(xc, yc, w, h)
+
+
+def default_boxes_to_array(default_boxes, img_size):
+    arr = np.zeros((len(default_boxes), 4))
+    for i, box in enumerate(default_boxes):
+        rect = norm_rect_to_rect(img_size, box.rect)
+        arr[i] = rect.as_array()
+    return arr
+
 
     
 class VocDataset:
