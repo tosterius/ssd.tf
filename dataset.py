@@ -46,7 +46,24 @@ def default_boxes_to_array(default_boxes, img_size):
     return arr
 
 
-    
+def calc_jaccard_overlap(box, prior_boxes):
+    area_prior = (prior_boxes[:, 2] - prior_boxes[:, 0] + 1) * (prior_boxes[:, 3] - prior_boxes[:, 1] + 1)
+    area_box = (box[2] - box[0] + 1) * (box[3] - box[1] + 1)
+
+    xmin = np.maximum(box[0], prior_boxes[:, 0])
+    ymin = np.maximum(box[1], prior_boxes[:, 1])
+    xmax = np.minimum(box[2], prior_boxes[:, 2])
+    ymax = np.minimum(box[3], prior_boxes[:, 3])
+
+    w = np.maximum(0, xmax - xmin + 1)
+    h = np.maximum(0, ymax - ymin + 1)
+    intersection = w * h
+    return intersection / (area_box + area_prior - intersection)
+
+
+def calc_overlap(box, prior_boxes, threshold=0.5):
+    pass
+
 class VocDataset:
     def __init__(self, root_directory=None):
         self.data = []

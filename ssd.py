@@ -21,7 +21,7 @@ voc_ssd_300 = Profile(n_classes=21, max_scale=1.0,
                             MapParams((1, 1), 0.9, 6, [1.0, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0])])
 
 
-def get_default_boxes(profile):
+def get_prior_boxes(profile):
     """
     Get sizes of default bounding boxes for every scale.
     See https://arxiv.org/pdf/1512.02325.pdf page 6
