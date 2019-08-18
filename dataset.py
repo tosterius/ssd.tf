@@ -2,6 +2,7 @@ import os
 import numpy as np
 import xml.etree.ElementTree as ET
 from collections import namedtuple
+from random import shuffle
 
 
 LabeledObject = namedtuple('LabeledObject', ['label', 'xc', 'yc', 'w', 'h'])
@@ -64,9 +65,16 @@ def calc_jaccard_overlap(box, prior_boxes):
 def calc_overlap(box, prior_boxes, threshold=0.5):
     pass
 
-class VocDataset:
-    def __init__(self, root_directory=None):
+
+class Dataset(object):
+    def __init__(self):
         self.data = []
+        self.label_map = None
+
+
+class VocDataset(Dataset):
+    def __init__(self, root_directory=None):
+        Dataset.__init__(self)
         self.label_map = {'background': 0,
                           'aeroplane': 1, 'bicycle': 2, 'bird': 3, 'boat': 4, 'bottle': 5,
                           'bus': 6, 'car': 7, 'cat': 8, 'chair': 9, 'cow': 10,
@@ -121,9 +129,41 @@ class VocDataset:
         self.data += other.data
         return self
 
+    def split(self, fractions=[0.99, 0.01]):
+        ret_datasets = []
+        shuffle(self.data)
+        n = len(self.data)
+        counter = 0
+        for frac in fractions:
+            portion = int(n * frac)
+            ds = Dataset()
+            ret_datasets.append(ds)
+            ds.data = self.data[counter:counter+portion]
+            ds.label_map = self.label_map.copy()
+            counter += portion
+        return ret_datasets
+
+
+
+
+class DataGenerator:
+    def __init__(self, dataset, batch_size):
+        pass
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        pass
+
+def get_train_val_data_generator(dataset):
+    pass
+
 
 if __name__ == '__main__':
     ds1 = VocDataset()
     ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2007'))
     ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2008'))
+
+    ds2, ds3 = ds1.split()
     pass

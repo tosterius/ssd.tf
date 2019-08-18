@@ -6,6 +6,8 @@ from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.contrib.framework import get_variables_to_restore
 from collections import namedtuple
 
+import dataset
+
 
 Profile = namedtuple('Profile', ['n_classes', 'max_scale', 'maps'])
 MapParams = namedtuple('MapParams', ['size', 'scale', 'n_bboxes', 'ratios'])
@@ -81,25 +83,29 @@ def smooth_l1_loss(x):
 
 
 class SSD:
-    def __init__(self, input, profile=voc_ssd_300):
+    def __init__(self, profile=voc_ssd_300):
         self.net = None
         self.feature_maps = []
         self.profile = profile
-
         self.label_dim = self.profile.n_classes + 4  # 4 bbox coords
 
+        # input tensors:
+        self.input = tf.placeholder(tf.float32, (None, 300, 300, 3))
+        self.gt = None  # looks like [y_0, y_1, .., y_num_of_classes, box_xc, box_yx, box_w, box_h]
+
+        # output tensors:
         self.logits = None
         self.classifier = None
         self.detections = None
         self.result = None
 
+        self.optimizer = None
         self.l2_norm = 0
-        self.gt = None  # looks like [y_0, y_1, .., y_num_of_classes, box_xc, box_yx, box_w, box_h]
         self.loss = None
         self.confidence_loss = None
         self.localization_loss = None
 
-        self.__init_vgg_16_part(input)
+        self.__init_vgg_16_part()
         self.__init_ssd_300_part()
         self.__init_detection_layers()
 
@@ -114,11 +120,11 @@ class SSD:
     def build_with_vgg(self, session, vgg_ckpt_path):
         self.saver.restore(session, vgg_ckpt_path)
 
-    def __init_vgg_16_part(self, inputs, scope='vgg_16'):
-        with variable_scope.variable_scope(scope, 'vgg_16', [inputs]) as sc:
+    def __init_vgg_16_part(self, scope='vgg_16'):
+        with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
-                self.net = slim.repeat(inputs, 2, slim.conv2d, 64, [3, 3], scope='conv1')
+                self.net = slim.repeat(self.input, 2, slim.conv2d, 64, [3, 3], scope='conv1')
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool1')  # 150x150
                 self.net = slim.repeat(self.net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool2')  # 75x75
@@ -241,6 +247,11 @@ class SSD:
 
         return self.loss
 
+    def init_optimizer(self, lr, momentum=0.9, global_step=None):
+        with tf.variable_scope('optimizer'):
+            self.optimizer = tf.train.MomentumOptimizer(lr, momentum)
+            self.optimizer = self.optimizer.minimize(self.loss, global_step=global_step, name='optimizer')
+
 
 def build_graph_train(checkpoint_load_path=None):
     graph = tf.Graph()
@@ -248,12 +259,28 @@ def build_graph_train(checkpoint_load_path=None):
         input_x = tf.placeholder(tf.float32, (None, 300, 300, 3))
 
     with tf.Session(graph=graph) as session:
-        ssd = SSD(input_x)
+        ssd = SSD()
         ssd.init_loss()
-        ssd.build_with_vgg(session, checkpoint_load_path)
+        # ssd.build_with_vgg(session, checkpoint_load_path)
         for v in tf.get_default_graph().as_graph_def().node:
             print(v.name)
         pass
 
+
+
+def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
+    graph = tf.Graph()
+
+    global_step = tf.Variable(0, trainable=False)
+    with tf.Session(graph=graph) as session:
+        net = SSD()
+        net.init_loss()
+        net.build_with_vgg(session, checkpoint_load_path)
+        net.init_optimizer(lr, global_step=global_step)
+        data_generator = dataset.DataGenerator(data_set, batch_size)
+
+        for x, y, gt in data_generator:
+            feed = {net.input: x, net.gt: y}
+            result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
 
 build_graph_train('pretraned/vgg_16.ckpt')
