@@ -91,6 +91,18 @@ class Dataset(object):
         self.data += other.data
         return self
 
+    def shuffle(self):
+        shuffle(self.data)
+
+    def batch(self, batchsize):
+        n = len(self.data)
+        for i in range(0, n, batchsize):
+            last = min(i + batchsize, n)
+            portion = self.data[i:last]
+            yield portion
+
+
+
 
 class VocDataset(Dataset):
     def __init__(self, root_directory=None):
@@ -161,8 +173,14 @@ def get_train_val_data_generator(dataset):
 
 if __name__ == '__main__':
     ds1 = VocDataset()
-    ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2007'))
-    ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2008'))
+    #ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2007'))
+    #ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2008'))
+
+    ds1 = ds1.extend(VocDataset('/data/Workspace/data/VOCtest_06-Nov-2007/VOC2007'))
+    ds1 = ds1.extend(VocDataset('/data/Workspace/data/VOCdevkit/VOC2012'))
 
     ds2, ds3 = ds1.split()
+
+    for portion in ds2.batch(4):
+        print(len(portion))
     pass
