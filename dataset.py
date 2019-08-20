@@ -71,6 +71,26 @@ class Dataset(object):
         self.data = []
         self.label_map = None
 
+    def split(self, fractions=[0.99, 0.01]):
+        ret_datasets = []
+        shuffle(self.data)
+        n = len(self.data)
+        counter = 0
+        for frac in fractions:
+            portion = int(n * frac)
+            ds = Dataset()
+            ret_datasets.append(ds)
+            ds.data = self.data[counter:counter+portion]
+            ds.label_map = self.label_map.copy()
+            counter += portion
+        return ret_datasets
+
+    def extend(self, other):
+        if other.label_map != self.label_map:
+            raise RuntimeError("Datasets must have identical label map")
+        self.data += other.data
+        return self
+
 
 class VocDataset(Dataset):
     def __init__(self, root_directory=None):
@@ -123,28 +143,6 @@ class VocDataset(Dataset):
 
         self.data.append(labeled_image)
 
-    def extend(self, other):
-        if other.label_map != self.label_map:
-            raise RuntimeError("Datasets must have identical map")
-        self.data += other.data
-        return self
-
-    def split(self, fractions=[0.99, 0.01]):
-        ret_datasets = []
-        shuffle(self.data)
-        n = len(self.data)
-        counter = 0
-        for frac in fractions:
-            portion = int(n * frac)
-            ds = Dataset()
-            ret_datasets.append(ds)
-            ds.data = self.data[counter:counter+portion]
-            ds.label_map = self.label_map.copy()
-            counter += portion
-        return ret_datasets
-
-
-
 
 class DataGenerator:
     def __init__(self, dataset, batch_size):
@@ -155,6 +153,7 @@ class DataGenerator:
 
     def __next__(self):
         pass
+
 
 def get_train_val_data_generator(dataset):
     pass
