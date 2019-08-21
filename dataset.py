@@ -8,6 +8,8 @@ from random import shuffle
 LabeledObject = namedtuple('LabeledObject', ['label', 'xc', 'yc', 'w', 'h'])
 LabeledImage = namedtuple('LabeledImage', ['filepath', 'size', 'objects'])
 
+DefaultBox = namedtuple('DefaultBox', ['xc', 'yc', 'w', 'h', 'fm_x', 'fm_y', 'scale', 'fm'])
+
 
 class Rect:
     def __init__(self, x0, y0, x1, y1):
@@ -20,7 +22,45 @@ class Rect:
 
 NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
 
-DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
+
+
+def get_prior_boxes(profile):
+    """
+    Get sizes of default bounding boxes for every scale.
+    See https://arxiv.org/pdf/1512.02325.pdf page 6
+    :param profile:
+    :return:
+    """
+    n_maps = len(profile.maps)
+    box_sizes = []
+    for i in range(n_maps):
+        scale = profile.maps[i].scale
+        aspect_ratios = profile.maps[i].ratios
+        sizes_for_aspects = []
+        for acpect_ratio in aspect_ratios:
+            sqrt_ar = np.sqrt(acpect_ratio)
+            w = scale * sqrt_ar
+            h = scale / sqrt_ar
+            sizes_for_aspects.append((w, h))
+
+        # additional default box for the aspect ratio of 1:
+        add_scale_one = profile.maps[i + 1].scale if i < n_maps - 1 else profile.max_scale
+        s_prime = np.sqrt(scale * add_scale_one)
+        sizes_for_aspects.append((s_prime, s_prime))
+        box_sizes.append(sizes_for_aspects)
+
+    default_boxes = []
+    for k in range(n_maps):
+        # f_k is the size of the k-th feature map
+        f_k = profile.maps[k].size[0]
+        s = profile.maps[k].scale
+        for (w, h) in box_sizes[k]:
+            for j in range(f_k):
+                yc = (j + 0.5) / f_k
+                for i in range(f_k):
+                    xc = (i + 0.5) / f_k
+                    default_boxes.append(DefaultBox(NormRect(xc, yc, w, h), i, j, s, k))
+    return default_boxes
 
 
 def norm_rect_to_rect(imgsize: tuple, rect: NormRect):
@@ -102,8 +142,6 @@ class Dataset(object):
             yield portion
 
 
-
-
 class VocDataset(Dataset):
     def __init__(self, root_directory=None):
         Dataset.__init__(self)
@@ -118,7 +156,7 @@ class VocDataset(Dataset):
 
     def init(self, root_directory):
         annotations_root = os.path.join(root_directory, 'Annotations')
-        images_root = os.path.join(root_directory, 'Images')
+        images_root = os.path.join(root_directory, 'JPEGImages')
         annotations_files = os.listdir(annotations_root)
 
         for filename in annotations_files:
@@ -134,6 +172,8 @@ class VocDataset(Dataset):
 
         filename = root.find('filename').text
         filepath = os.path.join(images_root, filename)
+        if not os.path.exists(filepath):
+            raise FileNotFoundError('File "' + filepath + '" does not exist')
         size = root.find('size')
         img_w = int(size.find('width').text)
         img_h = int(size.find('height').text)
@@ -156,8 +196,23 @@ class VocDataset(Dataset):
         self.data.append(labeled_image)
 
 
+def label_generator(dataset, batchsize, imgsize, infinity=True):
+    while True:
+        batches = dataset.batch(batchsize)
+        for batch in batches:
+            ret = []
+            for labeled_image in batch:
+                for labeled_object in labeled_image.objects:
+                    rect = norm_rect_to_rect(imgsize, labeled_object) #debug
+                    ret.append(rect)
+            yield ret
+        if infinity is not True:
+            break
+
+
 class DataGenerator:
-    def __init__(self, dataset, batch_size):
+    def __init__(self, dataset, batch_size, infinity=True):
+
         pass
 
     def __iter__(self):
@@ -172,15 +227,13 @@ def get_train_val_data_generator(dataset):
 
 
 if __name__ == '__main__':
+
     ds1 = VocDataset()
     #ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2007'))
     #ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2008'))
 
-    ds1 = ds1.extend(VocDataset('/data/Workspace/data/VOCtest_06-Nov-2007/VOC2007'))
-    ds1 = ds1.extend(VocDataset('/data/Workspace/data/VOCdevkit/VOC2012'))
+    ds = VocDataset('/data/Workspace/data/VOCDebug')
 
-    ds2, ds3 = ds1.split()
-
-    for portion in ds2.batch(4):
-        print(len(portion))
+    for item in label_generator(ds, 8, (300, 300), True):
+        print(len(item))
     pass
