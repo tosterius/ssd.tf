@@ -3,12 +3,12 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from collections import namedtuple
 from random import shuffle
-
+from profiles import voc_ssd_300
 
 LabeledObject = namedtuple('LabeledObject', ['label', 'xc', 'yc', 'w', 'h'])
 LabeledImage = namedtuple('LabeledImage', ['filepath', 'size', 'objects'])
 
-DefaultBox = namedtuple('DefaultBox', ['xc', 'yc', 'w', 'h', 'fm_x', 'fm_y', 'scale', 'fm'])
+DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
 
 
 class Rect:
@@ -82,6 +82,8 @@ def rect_to_norm_rect(imgsize: tuple, rect: Rect):
 def default_boxes_to_array(default_boxes, img_size):
     arr = np.zeros((len(default_boxes), 4))
     for i, box in enumerate(default_boxes):
+        # the rect absolute coordinates might be out of img_size
+        # it does not matter because we need to compute overlap with gt boxes
         rect = norm_rect_to_rect(img_size, box.rect)
         arr[i] = rect.as_array()
     return arr
@@ -103,7 +105,17 @@ def calc_jaccard_overlap(box, prior_boxes):
 
 
 def calc_overlap(box, prior_boxes, threshold=0.5):
-    pass
+    ret = []
+    overlaps = calc_jaccard_overlap(box, prior_boxes)
+    flags = overlaps > threshold
+    nonzero_idxs = np.nonzero(flags)[0]
+
+    if nonzero_idxs.size == 0:
+        return ret
+
+    for i in nonzero_idxs:
+        ret.append((i, overlaps[i]))
+    return ret
 
 
 class Dataset(object):
@@ -196,7 +208,9 @@ class VocDataset(Dataset):
         self.data.append(labeled_image)
 
 
-def label_generator(dataset, batchsize, imgsize, infinity=True):
+def label_generator(profile, dataset, batchsize, imgsize, infinity=True):
+    default_boxes = get_prior_boxes(profile)
+    anchor_rects = default_boxes_to_array(default_boxes, imgsize)
     while True:
         batches = dataset.batch(batchsize)
         for batch in batches:
@@ -204,7 +218,8 @@ def label_generator(dataset, batchsize, imgsize, infinity=True):
             for labeled_image in batch:
                 for labeled_object in labeled_image.objects:
                     rect = norm_rect_to_rect(imgsize, labeled_object) #debug
-                    ret.append(rect)
+                    a = calc_overlap(rect.as_array(), anchor_rects)
+                    ret.append(a)
             yield ret
         if infinity is not True:
             break
@@ -234,6 +249,6 @@ if __name__ == '__main__':
 
     ds = VocDataset('/data/Workspace/data/VOCDebug')
 
-    for item in label_generator(ds, 8, (300, 300), True):
+    for item in label_generator(voc_ssd_300, ds, 8, (300, 300), True):
         print(len(item))
     pass
