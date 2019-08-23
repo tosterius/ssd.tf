@@ -222,11 +222,11 @@ def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
         net.init_loss()
         net.build_with_vgg(session, checkpoint_load_path)
         net.init_optimizer(lr, global_step=global_step)
-        data_generator = dataset.DataGenerator(data_set, batch_size)
+        data_generator = dataset.LabelGenerator(voc_ssd_300, batch_size)
 
-        for x, y, gt in data_generator:
+        for x, y, gt in  data_generator.get(data_set, batch_size):
             feed = {net.input: x, net.gt: y}
             result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
 
 
-build_graph_train('pretraned/vgg_16.ckpt')
+build_graph_train()

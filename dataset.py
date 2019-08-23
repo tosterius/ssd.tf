@@ -105,17 +105,10 @@ def calc_jaccard_overlap(box, prior_boxes):
 
 
 def calc_overlap(box, prior_boxes, threshold=0.5):
-    ret = []
     overlaps = calc_jaccard_overlap(box, prior_boxes)
     flags = overlaps > threshold
     nonzero_idxs = np.nonzero(flags)[0]
-
-    if nonzero_idxs.size == 0:
-        return ret
-
-    for i in nonzero_idxs:
-        ret.append((i, overlaps[i]))
-    return ret
+    return [(i, overlaps[i]) for i in nonzero_idxs]
 
 
 class Dataset(object):
@@ -210,8 +203,9 @@ class VocDataset(Dataset):
 
 def label_generator(profile, dataset, batchsize, imgsize, infinity=True):
     default_boxes = get_prior_boxes(profile)
-    anchor_rects = default_boxes_to_array(default_boxes, imgsize)
+    anchor_rects = default_boxes_to_array(default_boxes, profile.imgsize)
     while True:
+        dataset.shuffle()
         batches = dataset.batch(batchsize)
         for batch in batches:
             ret = []
@@ -225,16 +219,48 @@ def label_generator(profile, dataset, batchsize, imgsize, infinity=True):
             break
 
 
-class DataGenerator:
-    def __init__(self, dataset, batch_size, infinity=True):
+class LabelGenerator:
+    def __init__(self, profile, infinity=True):
+        prior_boxes = get_prior_boxes(profile)
+        self.imgsize = profile.imgsize
+        self.default_boxes = default_boxes_to_array(prior_boxes, self.imgsize)
+        self.infinity = infinity
+        self.overlap_thresh = 0.5
+        self.label_dim = profile.n_classes + 4
+        self.n_prior_boxes = len(prior_boxes)
 
-        pass
+    def get(self, dataset, batchsize):
+        while True:
+            dataset.shuffle()
+            raw_batches = dataset.batch(batchsize)
+            for raw_batch in raw_batches:
+                ret = []
+                for labeled_image in raw_batch:
+                    ret.append(self.process_labeled_image(labeled_image))
+                yield ret
+            if self.infinity is not True:
+                break
 
-    def __iter__(self):
-        return self
+    def process_labeled_image(self, labeled_image):
+        label = np.zeros((self.n_prior_boxes, self.label_dim), dtype=np.float32)
 
-    def __next__(self):
-        pass
+        def fill_label(overlap, matches, default):
+            pass
+
+        map = {}
+        for labeled_object in labeled_image.objects:
+            rect = norm_rect_to_rect(self.imgsize, labeled_object)  # debug
+            overlaps = calc_overlap(rect.as_array(), self.default_boxes, self.overlap_thresh)
+
+            for id, score in overlaps:
+                if id in map and map[id] >= score:
+                    continue
+                pass
+
+            #best_overlap = max(overlaps, key=lambda x: x[1])
+
+
+        return label
 
 
 def get_train_val_data_generator(dataset):
@@ -248,7 +274,8 @@ if __name__ == '__main__':
     #ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2008'))
 
     ds = VocDataset('/data/Workspace/data/VOCDebug')
-
-    for item in label_generator(voc_ssd_300, ds, 8, (300, 300), True):
+    lg = LabelGenerator(voc_ssd_300, True)
+    generator = lg.get(ds, 8)
+    for item in generator:
         print(len(item))
     pass
