@@ -219,6 +219,9 @@ def decode_location(det_rect: np.ndarray, default_box: NormRect):
         default_box.h + det_rect[3],
     )
 
+class ImageLoader:
+    def __call__(self, labeled_image):
+        pass
 
 class LabelGenerator:
     def __init__(self, profile, infinity=True):
@@ -246,9 +249,6 @@ class LabelGenerator:
     def process_labeled_image(self, labeled_image):
         label = np.zeros((self.n_prior_boxes, self.label_dim), dtype=np.float32)
 
-        def fill_label(overlap, matches, default):
-            pass
-
         map = {}
         for labeled_object in labeled_image.objects:
             rect = norm_rect_to_rect(self.imgsize, labeled_object.rect)  # debug
@@ -262,11 +262,7 @@ class LabelGenerator:
                 label[id, labeled_object.label] = 1.0
                 label[id, self.n_classes + 1:] = encode_location(labeled_object.rect, self.default_boxes_rel[id].rect)
 
-
-
             #best_overlap = max(overlaps, key=lambda x: x[1])
-
-
         return label
 
 
