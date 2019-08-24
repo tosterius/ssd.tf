@@ -29,14 +29,17 @@ def smooth_l1_loss(x):
 
 
 class SSD:
-    def __init__(self, profile=voc_ssd_300):
+    def __init__(self, session, profile=voc_ssd_300):
+        self.session = session
         self.net = None
         self.feature_maps = []
         self.profile = profile
+
         self.label_dim = self.profile.n_classes + 4  # 4 bbox coords
 
         # input tensors:
-        self.input = tf.placeholder(tf.float32, (None, 300, 300, 3))
+        with tf.variable_scope('image_input'):
+            self.input = tf.placeholder(tf.float32, (None, 300, 300, 3))
         self.gt = None  # looks like [y_0, y_1, .., y_num_of_classes, box_xc, box_yx, box_w, box_h]
 
         # output tensors:

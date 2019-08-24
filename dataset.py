@@ -5,10 +5,8 @@ from collections import namedtuple
 from random import shuffle
 from profiles import voc_ssd_300
 
-LabeledObject = namedtuple('LabeledObject', ['label', 'xc', 'yc', 'w', 'h'])
-LabeledImage = namedtuple('LabeledImage', ['filepath', 'size', 'objects'])
 
-DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
+NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
 
 
 class Rect:
@@ -20,8 +18,10 @@ class Rect:
         return np.array([self.x0, self.y0, self.x1, self.y1])
 
 
-NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
+LabeledObject = namedtuple('LabeledObject', ['label', 'rect'])
+LabeledImage = namedtuple('LabeledImage', ['filepath', 'size', 'objects'])
 
+DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
 
 
 def get_prior_boxes(profile):
@@ -85,6 +85,7 @@ def default_boxes_to_array(default_boxes, img_size):
         # the rect absolute coordinates might be out of img_size
         # it does not matter because we need to compute overlap with gt boxes
         rect = norm_rect_to_rect(img_size, box.rect)
+        # [x0 y0 x1 y1]
         arr[i] = rect.as_array()
     return arr
 
@@ -196,38 +197,39 @@ class VocDataset(Dataset):
             w = float(xmax - xmin) / img_w
             h = float(ymax - ymin) / img_h
 
-            labeled_image.objects.append(LabeledObject(label=label, xc=xc, yc=yc, w=w, h=h))
+            labeled_image.objects.append(LabeledObject(label=label, rect=NormRect(xc, yc, w, h)))
 
         self.data.append(labeled_image)
 
 
-def label_generator(profile, dataset, batchsize, imgsize, infinity=True):
-    default_boxes = get_prior_boxes(profile)
-    anchor_rects = default_boxes_to_array(default_boxes, profile.imgsize)
-    while True:
-        dataset.shuffle()
-        batches = dataset.batch(batchsize)
-        for batch in batches:
-            ret = []
-            for labeled_image in batch:
-                for labeled_object in labeled_image.objects:
-                    rect = norm_rect_to_rect(imgsize, labeled_object) #debug
-                    a = calc_overlap(rect.as_array(), anchor_rects)
-                    ret.append(a)
-            yield ret
-        if infinity is not True:
-            break
+def encode_location(gt_rect: NormRect, default_box_rect: NormRect):
+    return np.array([
+        gt_rect.xc - default_box_rect.xc,
+        gt_rect.yc - default_box_rect.yc,
+        gt_rect.w / default_box_rect.w,
+        gt_rect.h / default_box_rect.h,
+    ])
+
+
+def decode_location(det_rect: np.ndarray, default_box: NormRect):
+    return NormRect(
+        default_box.xc + det_rect[0],
+        default_box.yc + det_rect[1],
+        default_box.w * det_rect[2],
+        default_box.h + det_rect[3],
+    )
 
 
 class LabelGenerator:
     def __init__(self, profile, infinity=True):
-        prior_boxes = get_prior_boxes(profile)
-        self.imgsize = profile.imgsize
-        self.default_boxes = default_boxes_to_array(prior_boxes, self.imgsize)
         self.infinity = infinity
         self.overlap_thresh = 0.5
-        self.label_dim = profile.n_classes + 4
-        self.n_prior_boxes = len(prior_boxes)
+        self.n_classes = profile.n_classes
+        self.label_dim = self.n_classes + 4
+        self.imgsize = profile.imgsize
+        self.default_boxes_rel = get_prior_boxes(profile)
+        self.default_boxes_abs = default_boxes_to_array(self.default_boxes_rel, self.imgsize)
+        self.n_prior_boxes = len(self.default_boxes_rel)
 
     def get(self, dataset, batchsize):
         while True:
@@ -249,13 +251,18 @@ class LabelGenerator:
 
         map = {}
         for labeled_object in labeled_image.objects:
-            rect = norm_rect_to_rect(self.imgsize, labeled_object)  # debug
-            overlaps = calc_overlap(rect.as_array(), self.default_boxes, self.overlap_thresh)
+            rect = norm_rect_to_rect(self.imgsize, labeled_object.rect)  # debug
+            overlaps = calc_overlap(rect.as_array(), self.default_boxes_abs, self.overlap_thresh)
 
             for id, score in overlaps:
                 if id in map and map[id] >= score:
                     continue
-                pass
+                map[id] = score
+                label[id, :self.n_classes + 1] = 0.0
+                label[id, labeled_object.label] = 1.0
+                label[id, self.n_classes + 1:] = encode_location(labeled_object.rect, self.default_boxes_rel[id].rect)
+
+
 
             #best_overlap = max(overlaps, key=lambda x: x[1])
 
