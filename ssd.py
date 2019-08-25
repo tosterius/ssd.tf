@@ -66,8 +66,8 @@ class SSD:
 
         self.saver = tf.train.Saver(get_variables_to_restore(exclude=exclude_layers))
 
-    def build_with_vgg(self, session, vgg_ckpt_path):
-        self.saver.restore(session, vgg_ckpt_path)
+    def build_with_vgg(self, vgg_ckpt_path):
+        self.saver.restore(self.session, vgg_ckpt_path)
 
     def __init_vgg_16_part(self, scope='vgg_16'):
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
@@ -130,7 +130,7 @@ class SSD:
             self.detections = output[:, :, self.profile.n_classes:]
             self.result = tf.concat([self.classifier, self.detections], axis=-1, name='result')
 
-    def init_loss(self):
+    def init_loss(self, decay=0.0001):
         self.gt = tf.placeholder(tf.float32, name='labels', shape=[None, None, self.label_dim])
 
         batch_size = tf.shape(self.gt)[0]
@@ -191,8 +191,10 @@ class SSD:
 
             self.localization_loss = tf.reduce_mean(localization_loss, name='localization_loss')
 
-            with tf.variable_scope('total_loss'):
-                self.loss = tf.add(self.localization_loss, self.confidence_loss, name='loss')
+        with tf.variable_scope('total_loss'):
+            self.l2_loss = tf.multiply(decay, self.l2_norm, name='l2_loss')
+            self.loss = tf.add(self.localization_loss, self.confidence_loss, name='loss')
+            self.loss = tf.add(self.loss, self.l2_loss, name='loss')
 
         return self.loss
 
@@ -227,4 +229,4 @@ def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
 if __name__ == '__main__':
     ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
 
-    train(10, 0.00001, 2, ds)
+    train(10, 0.0001, 2, ds)
