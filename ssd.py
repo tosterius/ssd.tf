@@ -203,25 +203,11 @@ class SSD:
         self.optimizer = optimizer
 
 
-def build_graph_train(checkpoint_load_path=None):
-    graph = tf.Graph()
-    with graph.as_default():
-        input_x = tf.placeholder(tf.float32, (None, 300, 300, 3))
-
-    with tf.Session(graph=graph) as session:
-        ssd = SSD()
-        ssd.init_loss()
-        # ssd.build_with_vgg(session, checkpoint_load_path)
-        for v in tf.get_default_graph().as_graph_def().node:
-            print(v.name)
-        pass
-
-
 def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
     graph = tf.Graph()
 
-    global_step = tf.Variable(0, trainable=False)
     with tf.Session(graph=graph) as session:
+        global_step = tf.Variable(0, trainable=False)
         net = SSD(session)
         net.init_loss()
         net.init_optimizer(lr, global_step=global_step)
@@ -230,11 +216,12 @@ def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
 
         lg = dataset.LabelGenerator(voc_ssd_300, True)
         loader = dataset.ImageLoader()
-        generator = lg.get(ds, batch_size, loader)
-
-        for x, y, gt in generator:
-            feed = {net.input: x, net.gt: y}
-            result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
+        generator = lg.get(data_set, batch_size, loader)
+        for epoch in range(n_epochs):
+            for x, y, gt in generator:
+                feed = {net.input: x, net.gt: y}
+                result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
+                print(loss_batch)
 
 
 if __name__ == '__main__':
