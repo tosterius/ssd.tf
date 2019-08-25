@@ -215,7 +215,7 @@ def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
         session.run(tf.global_variables_initializer())
 
         lg = dataset.LabelGenerator(voc_ssd_300, True)
-        loader = dataset.ImageLoader()
+        loader = dataset.ImageLoader(voc_ssd_300.imgsize)
         generator = lg.get(data_set, batch_size, loader)
         for epoch in range(n_epochs):
             for x, y, gt in generator:

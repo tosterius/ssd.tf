@@ -233,9 +233,12 @@ def decode_location(det_rect: np.ndarray, default_box: NormRect):
 
 
 class ImageLoader:
+    def __init__(self, img_size):
+        self.img_size = img_size
+
     def __call__(self, labeled_file):
         img_raw = cv2.imread(labeled_file.filepath, cv2.IMREAD_COLOR)
-        labeled_file.data = cv2.resize(img_raw, (300, 300))
+        labeled_file.data = cv2.resize(img_raw, self.img_size)
         return labeled_file
 
 
@@ -298,7 +301,7 @@ if __name__ == '__main__':
 
     ds = VocDataset('/data/Workspace/data/VOCDebug')
     lg = LabelGenerator(voc_ssd_300, True)
-    loader = ImageLoader()
+    loader = ImageLoader(voc_ssd_300.imgsize)
     generator = lg.get(ds, 8, loader)
     for item in generator:
         print(len(item))
