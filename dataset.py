@@ -1,4 +1,5 @@
 import os
+import cv2
 import numpy as np
 import xml.etree.ElementTree as ET
 from collections import namedtuple
@@ -18,10 +19,21 @@ class Rect:
         return np.array([self.x0, self.y0, self.x1, self.y1])
 
 
-LabeledObject = namedtuple('LabeledObject', ['label', 'rect'])
-LabeledImage = namedtuple('LabeledImage', ['filepath', 'size', 'objects'])
-
 DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
+
+LabeledObject = namedtuple('LabeledObject', ['label', 'rect'])
+
+
+class LabeledImage:
+    def __init__(self, filepath, size, objects, data=None):
+        self.filepath = filepath
+        self.size = size
+        self.objects = objects
+        self.data = data
+
+
+# LabeledImage = namedtuple('LabeledImage', ['filepath', 'size', 'objects', 'data'],
+#                           defaults=(None, None, None, None))
 
 
 def get_prior_boxes(profile):
@@ -90,14 +102,14 @@ def default_boxes_to_array(default_boxes, img_size):
     return arr
 
 
-def calc_jaccard_overlap(box, prior_boxes):
+def calc_jaccard_overlap(box_as_array, prior_boxes):
     area_prior = (prior_boxes[:, 2] - prior_boxes[:, 0] + 1) * (prior_boxes[:, 3] - prior_boxes[:, 1] + 1)
-    area_box = (box[2] - box[0] + 1) * (box[3] - box[1] + 1)
+    area_box = (box_as_array[2] - box_as_array[0] + 1) * (box_as_array[3] - box_as_array[1] + 1)
 
-    xmin = np.maximum(box[0], prior_boxes[:, 0])
-    ymin = np.maximum(box[1], prior_boxes[:, 1])
-    xmax = np.minimum(box[2], prior_boxes[:, 2])
-    ymax = np.minimum(box[3], prior_boxes[:, 3])
+    xmin = np.maximum(box_as_array[0], prior_boxes[:, 0])
+    ymin = np.maximum(box_as_array[1], prior_boxes[:, 1])
+    xmax = np.minimum(box_as_array[2], prior_boxes[:, 2])
+    ymax = np.minimum(box_as_array[3], prior_boxes[:, 3])
 
     w = np.maximum(0, xmax - xmin + 1)
     h = np.maximum(0, ymax - ymin + 1)
@@ -105,8 +117,8 @@ def calc_jaccard_overlap(box, prior_boxes):
     return intersection / (area_box + area_prior - intersection)
 
 
-def calc_overlap(box, prior_boxes, threshold=0.5):
-    overlaps = calc_jaccard_overlap(box, prior_boxes)
+def calc_overlap(box_as_array, prior_boxes, threshold=0.5):
+    overlaps = calc_jaccard_overlap(box_as_array, prior_boxes)
     flags = overlaps > threshold
     nonzero_idxs = np.nonzero(flags)[0]
     return [(i, overlaps[i]) for i in nonzero_idxs]
@@ -126,7 +138,7 @@ class Dataset(object):
             portion = int(n * frac)
             ds = Dataset()
             ret_datasets.append(ds)
-            ds.data = self.data[counter:counter+portion]
+            ds.data = self.data[counter:counter + portion]
             ds.label_map = self.label_map.copy()
             counter += portion
         return ret_datasets
@@ -184,7 +196,7 @@ class VocDataset(Dataset):
         img_w = int(size.find('width').text)
         img_h = int(size.find('height').text)
 
-        labeled_image = LabeledImage(filepath, (img_h, img_w), [])
+        labeled_file = LabeledImage(filepath, (img_h, img_w), [])
         for o in root.iter('object'):
             label = self.label_map[o.find('name').text]
             bbox = o.find('bndbox')
@@ -197,9 +209,9 @@ class VocDataset(Dataset):
             w = float(xmax - xmin) / img_w
             h = float(ymax - ymin) / img_h
 
-            labeled_image.objects.append(LabeledObject(label=label, rect=NormRect(xc, yc, w, h)))
+            labeled_file.objects.append(LabeledObject(label=label, rect=NormRect(xc, yc, w, h)))
 
-        self.data.append(labeled_image)
+        self.data.append(labeled_file)
 
 
 def encode_location(gt_rect: NormRect, default_box_rect: NormRect):
@@ -219,9 +231,13 @@ def decode_location(det_rect: np.ndarray, default_box: NormRect):
         default_box.h + det_rect[3],
     )
 
+
 class ImageLoader:
-    def __call__(self, labeled_image):
-        pass
+    def __call__(self, labeled_file):
+        img_raw = cv2.imread(labeled_file.filepath, cv2.IMREAD_COLOR)
+        labeled_file.data = cv2.resize(img_raw, (300, 300))
+        return labeled_file
+
 
 class LabelGenerator:
     def __init__(self, profile, infinity=True):
@@ -234,23 +250,31 @@ class LabelGenerator:
         self.default_boxes_abs = default_boxes_to_array(self.default_boxes_rel, self.imgsize)
         self.n_prior_boxes = len(self.default_boxes_rel)
 
-    def get(self, dataset, batchsize):
+    def get(self, dataset, batchsize, preprocessor):
         while True:
             dataset.shuffle()
             raw_batches = dataset.batch(batchsize)
             for raw_batch in raw_batches:
-                ret = []
-                for labeled_image in raw_batch:
-                    ret.append(self.process_labeled_image(labeled_image))
-                yield ret
+                data, labels, gt = [], [], []
+                for labeled_file in raw_batch:
+                    labeled_image = preprocessor(labeled_file)
+                    label = self.process_labeled_file(labeled_image)
+                    data.append(labeled_image.data)
+                    labels.append(label)
+                    gt.append(labeled_image.objects)
+
+                data = np.array(data, dtype=np.float32)
+                labels = np.array(labels, dtype=np.float32)
+
+                yield data, labels, gt
             if self.infinity is not True:
                 break
 
-    def process_labeled_image(self, labeled_image):
+    def process_labeled_file(self, labeled_file):
         label = np.zeros((self.n_prior_boxes, self.label_dim), dtype=np.float32)
 
         map = {}
-        for labeled_object in labeled_image.objects:
+        for labeled_object in labeled_file.objects:
             rect = norm_rect_to_rect(self.imgsize, labeled_object.rect)  # debug
             overlaps = calc_overlap(rect.as_array(), self.default_boxes_abs, self.overlap_thresh)
 
@@ -258,27 +282,24 @@ class LabelGenerator:
                 if id in map and map[id] >= score:
                     continue
                 map[id] = score
-                label[id, :self.n_classes + 1] = 0.0
+                label[id, :self.n_classes] = 0.0
                 label[id, labeled_object.label] = 1.0
-                label[id, self.n_classes + 1:] = encode_location(labeled_object.rect, self.default_boxes_rel[id].rect)
+                label[id, self.n_classes:] = encode_location(labeled_object.rect, self.default_boxes_rel[id].rect)
 
-            #best_overlap = max(overlaps, key=lambda x: x[1])
+            # best_overlap = max(overlaps, key=lambda x: x[1])
         return label
-
-
-def get_train_val_data_generator(dataset):
-    pass
 
 
 if __name__ == '__main__':
 
     ds1 = VocDataset()
-    #ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2007'))
-    #ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2008'))
+    # ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2007'))
+    # ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2008'))
 
     ds = VocDataset('/data/Workspace/data/VOCDebug')
     lg = LabelGenerator(voc_ssd_300, True)
-    generator = lg.get(ds, 8)
+    loader = ImageLoader()
+    generator = lg.get(ds, 8, loader)
     for item in generator:
         print(len(item))
     pass

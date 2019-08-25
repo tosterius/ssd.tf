@@ -198,8 +198,9 @@ class SSD:
 
     def init_optimizer(self, lr, momentum=0.9, global_step=None):
         with tf.variable_scope('optimizer'):
-            self.optimizer = tf.train.MomentumOptimizer(lr, momentum)
-            self.optimizer = self.optimizer.minimize(self.loss, global_step=global_step, name='optimizer')
+            optimizer = tf.train.MomentumOptimizer(lr, momentum)
+            optimizer = optimizer.minimize(self.loss, global_step=global_step, name='optimizer')
+        self.optimizer = optimizer
 
 
 def build_graph_train(checkpoint_load_path=None):
@@ -221,15 +222,22 @@ def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
 
     global_step = tf.Variable(0, trainable=False)
     with tf.Session(graph=graph) as session:
-        net = SSD()
+        net = SSD(session)
         net.init_loss()
-        net.build_with_vgg(session, checkpoint_load_path)
         net.init_optimizer(lr, global_step=global_step)
-        data_generator = dataset.LabelGenerator(voc_ssd_300, batch_size)
 
-        for x, y, gt in  data_generator.get(data_set, batch_size):
+        session.run(tf.global_variables_initializer())
+
+        lg = dataset.LabelGenerator(voc_ssd_300, True)
+        loader = dataset.ImageLoader()
+        generator = lg.get(ds, batch_size, loader)
+
+        for x, y, gt in generator:
             feed = {net.input: x, net.gt: y}
             result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
 
 
-build_graph_train()
+if __name__ == '__main__':
+    ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
+
+    train(10, 0.00001, 2, ds)
