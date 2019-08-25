@@ -209,9 +209,12 @@ def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
     graph = tf.Graph()
 
     with tf.Session(graph=graph) as session:
-        global_step = tf.Variable(0, trainable=False)
+
         net = SSD(session)
         net.init_loss()
+        # net.build_with_vgg('/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt')
+
+        global_step = tf.Variable(0, trainable=False)
         net.init_optimizer(lr, global_step=global_step)
 
         session.run(tf.global_variables_initializer())
