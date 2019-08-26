@@ -1,2 +1,1 @@
-# dldetectors
-
+# Yet another SSD implementation
