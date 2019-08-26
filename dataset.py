@@ -127,7 +127,11 @@ def calc_overlap(box_as_array, prior_boxes, threshold=0.5):
 class Dataset(object):
     def __init__(self):
         self.data = []
-        self.label_map = None
+        self.label_map = {}
+
+    def get_labels_number(self):
+        return len(self.label_map)
+
 
     def split(self, fractions=[0.99, 0.01]):
         ret_datasets = []

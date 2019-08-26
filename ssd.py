@@ -3,7 +3,6 @@ import tensorflow.contrib.slim as slim
 from tensorflow.python.ops import variable_scope
 from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.contrib.framework import get_variables_to_restore
-
 from profiles import voc_ssd_300
 import dataset
 
@@ -29,13 +28,14 @@ def smooth_l1_loss(x):
 
 
 class SSD:
-    def __init__(self, session, profile=voc_ssd_300):
+    def __init__(self, session, profile, n_classes):
         self.session = session
-        self.net = None
-        self.feature_maps = []
         self.profile = profile
 
-        self.label_dim = self.profile.n_classes + 4  # 4 bbox coords
+        self.net = None
+        self.feature_maps = []
+        self.n_classes = n_classes
+        self.label_dim = self.n_classes + 4  # 4 bbox coords
 
         # input tensors:
         with tf.variable_scope('image_input'):
@@ -54,20 +54,19 @@ class SSD:
         self.confidence_loss = None
         self.localization_loss = None
 
+    def build_with_vgg(self, vgg_ckpt_path):
         self.__init_vgg_16_part()
-        self.__init_ssd_300_part()
-        self.__init_detection_layers()
-
         exclude_layers = ['vgg_16/fc6',
                           'vgg_16/dropout6',
                           'vgg_16/fc7',
                           'vgg_16/dropout7',
-                          'vgg_16/fc8'] + list(self.ssd_end_points.keys())
+                          'vgg_16/fc8']
 
-        self.saver = tf.train.Saver(get_variables_to_restore(exclude=exclude_layers))
+        saver = tf.train.Saver(get_variables_to_restore(exclude=exclude_layers))
+        saver.restore(self.session, vgg_ckpt_path)
 
-    def build_with_vgg(self, vgg_ckpt_path):
-        self.saver.restore(self.session, vgg_ckpt_path)
+        self.__init_ssd_300_part()
+        self.__init_detection_layers()
 
     def __init_vgg_16_part(self, scope='vgg_16'):
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
@@ -125,19 +124,19 @@ class SSD:
         with tf.variable_scope('output'):
             output = tf.concat(output, axis=1, name='output')
             self.n_anchors = tf.shape(output, out_type=tf.int64)[0]
-            self.logits = output[:, :, :self.profile.n_classes]
+            self.logits = output[:, :, :self.n_classes]
             self.classifier = tf.nn.softmax(self.logits)
-            self.detections = output[:, :, self.profile.n_classes:]
+            self.detections = output[:, :, self.n_classes:]
             self.result = tf.concat([self.classifier, self.detections], axis=-1, name='result')
 
-    def init_loss(self, decay=0.0001):
+    def init_loss_and_optimizer(self, lr, momentum=0.9, global_step=None, decay=0.0001):
         self.gt = tf.placeholder(tf.float32, name='labels', shape=[None, None, self.label_dim])
 
         batch_size = tf.shape(self.gt)[0]
 
         with tf.variable_scope('gt'):
-            gt_labels = self.gt[:, :, :self.profile.n_classes]
-            gt_rects = self.gt[:, :, self.profile.n_classes:]
+            gt_labels = self.gt[:, :, :self.n_classes]
+            gt_rects = self.gt[:, :, self.n_classes:]
 
         with tf.variable_scope('counters'):
             n_total = tf.ones([batch_size], dtype=tf.int64) * self.n_anchors
@@ -196,13 +195,11 @@ class SSD:
             self.loss = tf.add(self.localization_loss, self.confidence_loss, name='loss')
             self.loss = tf.add(self.loss, self.l2_loss, name='loss')
 
-        return self.loss
-
-    def init_optimizer(self, lr, momentum=0.9, global_step=None):
         with tf.variable_scope('optimizer'):
-            optimizer = tf.train.MomentumOptimizer(lr, momentum)
-            optimizer = optimizer.minimize(self.loss, global_step=global_step, name='optimizer')
-        self.optimizer = optimizer
+            self.optimizer = tf.train.MomentumOptimizer(lr, momentum)
+            self.optimizer = self.optimizer.minimize(self.loss, global_step=global_step, name='optimizer')
+
+        return self.loss
 
 
 def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
@@ -210,12 +207,11 @@ def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
 
     with tf.Session(graph=graph) as session:
 
-        net = SSD(session)
-        net.init_loss()
-        # net.build_with_vgg('/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt')
+        net = SSD(session, voc_ssd_300, data_set.get_labels_number())
+        net.build_with_vgg('/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt')
 
         global_step = tf.Variable(0, trainable=False)
-        net.init_optimizer(lr, global_step=global_step)
+        net.init_loss_and_optimizer(lr, global_step=global_step)
 
         session.run(tf.global_variables_initializer())
 
