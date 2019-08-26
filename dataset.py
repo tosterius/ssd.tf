@@ -264,9 +264,12 @@ class LabelGenerator:
                 for labeled_file in raw_batch:
                     labeled_image = preprocessor(labeled_file)
                     label = self.__process_labeled_file(labeled_image, n_classes)
-                    data.append(labeled_image.data)
-                    labels.append(label)
-                    gt.append(labeled_image.objects)
+
+                    n_no_object = np.count_nonzero(label[:, n_classes - 1])
+                    if n_no_object < label.shape[0]:
+                        data.append(labeled_image.data)
+                        labels.append(label)
+                        gt.append(labeled_image.objects)
 
                 data = np.array(data, dtype=np.float32)
                 labels = np.array(labels, dtype=np.float32)
@@ -278,6 +281,7 @@ class LabelGenerator:
     def __process_labeled_file(self, labeled_file, n_classes):
         label_dim = n_classes + 4
         label = np.zeros((self.n_prior_boxes, label_dim), dtype=np.float32)
+        label[:, n_classes - 1] = 1
 
         map = {}
         for labeled_object in labeled_file.objects:
