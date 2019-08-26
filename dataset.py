@@ -75,19 +75,19 @@ def get_prior_boxes(profile):
     return default_boxes
 
 
-def norm_rect_to_rect(imgsize: tuple, rect: NormRect):
-    xc = rect.xc * imgsize[0]
-    yc = rect.yc * imgsize[1]
-    w_half = rect.w * imgsize[0] / 2
-    h_half = rect.h * imgsize[1] / 2
+def norm_rect_to_rect(img_size: tuple, rect: NormRect):
+    xc = rect.xc * img_size[0]
+    yc = rect.yc * img_size[1]
+    w_half = rect.w * img_size[0] / 2
+    h_half = rect.h * img_size[1] / 2
     return Rect(int(xc - w_half), int(yc - h_half), int(xc + w_half), int(yc + h_half))
 
 
-def rect_to_norm_rect(imgsize: tuple, rect: Rect):
-    xc = (rect.x0 + rect.x1) / 2.0 / imgsize[0]
-    yc = (rect.y0 + rect.y1) / 2.0 / imgsize[1]
-    w = float(rect.x1 - rect.x0) / imgsize[0]
-    h = float(rect.y1 - rect.y0) / imgsize[1]
+def rect_to_norm_rect(img_size: tuple, rect: Rect):
+    xc = (rect.x0 + rect.x1) / 2.0 / img_size[0]
+    yc = (rect.y0 + rect.y1) / 2.0 / img_size[1]
+    w = float(rect.x1 - rect.x0) / img_size[0]
+    h = float(rect.y1 - rect.y0) / img_size[1]
     return NormRect(xc, yc, w, h)
 
 
@@ -131,7 +131,6 @@ class Dataset(object):
 
     def get_labels_number(self):
         return len(self.label_map)
-
 
     def split(self, fractions=[0.99, 0.01]):
         ret_datasets = []
@@ -250,14 +249,13 @@ class LabelGenerator:
     def __init__(self, profile, infinity=True):
         self.infinity = infinity
         self.overlap_thresh = 0.5
-        self.n_classes = profile.n_classes
-        self.label_dim = self.n_classes + 4
-        self.imgsize = profile.imgsize
+        self.img_size = profile.imgsize
         self.default_boxes_rel = get_prior_boxes(profile)
-        self.default_boxes_abs = default_boxes_to_array(self.default_boxes_rel, self.imgsize)
+        self.default_boxes_abs = default_boxes_to_array(self.default_boxes_rel, self.img_size)
         self.n_prior_boxes = len(self.default_boxes_rel)
 
     def get(self, dataset, batchsize, preprocessor):
+        n_classes = dataset.get_labels_number()
         while True:
             dataset.shuffle()
             raw_batches = dataset.batch(batchsize)
@@ -265,7 +263,7 @@ class LabelGenerator:
                 data, labels, gt = [], [], []
                 for labeled_file in raw_batch:
                     labeled_image = preprocessor(labeled_file)
-                    label = self.process_labeled_file(labeled_image)
+                    label = self.__process_labeled_file(labeled_image, n_classes)
                     data.append(labeled_image.data)
                     labels.append(label)
                     gt.append(labeled_image.objects)
@@ -277,21 +275,22 @@ class LabelGenerator:
             if self.infinity is not True:
                 break
 
-    def process_labeled_file(self, labeled_file):
-        label = np.zeros((self.n_prior_boxes, self.label_dim), dtype=np.float32)
+    def __process_labeled_file(self, labeled_file, n_classes):
+        label_dim = n_classes + 4
+        label = np.zeros((self.n_prior_boxes, label_dim), dtype=np.float32)
 
         map = {}
         for labeled_object in labeled_file.objects:
-            rect = norm_rect_to_rect(self.imgsize, labeled_object.rect)  # debug
+            rect = norm_rect_to_rect(self.img_size, labeled_object.rect)  # debug
             overlaps = calc_overlap(rect.as_array(), self.default_boxes_abs, self.overlap_thresh)
 
             for id, score in overlaps:
                 if id in map and map[id] >= score:
                     continue
                 map[id] = score
-                label[id, :self.n_classes] = 0.0
+                label[id, :n_classes] = 0.0
                 label[id, labeled_object.label] = 1.0
-                label[id, self.n_classes:] = encode_location(labeled_object.rect, self.default_boxes_rel[id].rect)
+                label[id, n_classes:] = encode_location(labeled_object.rect, self.default_boxes_rel[id].rect)
 
             # best_overlap = max(overlaps, key=lambda x: x[1])
         return label
