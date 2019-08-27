@@ -4,7 +4,7 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from collections import namedtuple
 from random import shuffle
-from profiles import voc_ssd_300
+from profiles import SSD_300
 
 
 NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
@@ -32,9 +32,8 @@ class LabeledImage:
         self.data = data
 
 
-# LabeledImage = namedtuple('LabeledImage', ['filepath', 'size', 'objects', 'data'],
-#                           defaults=(None, None, None, None))
-
+def nms(detections, scores, threshold):
+    raise NotImplementedError()
 
 def get_prior_boxes(profile):
     """
@@ -155,10 +154,10 @@ class Dataset(object):
     def shuffle(self):
         shuffle(self.data)
 
-    def batch(self, batchsize):
+    def batch_iterator(self, batch_size):
         n = len(self.data)
-        for i in range(0, n, batchsize):
-            last = min(i + batchsize, n)
+        for i in range(0, n, batch_size):
+            last = min(i + batch_size, n)
             portion = self.data[i:last]
             yield portion
 
@@ -247,6 +246,15 @@ class ImageLoader:
         return labeled_file
 
 
+class ImageAugmentator:
+    def __init__(self):
+        pass
+
+    def __call__(self, labeled_file):
+        # preprocessing TODO:
+        return labeled_file
+
+
 class LabelGenerator:
     def __init__(self, profile, infinity=True):
         self.infinity = infinity
@@ -256,11 +264,11 @@ class LabelGenerator:
         self.default_boxes_abs = default_boxes_to_array(self.default_boxes_rel, self.img_size)
         self.n_prior_boxes = len(self.default_boxes_rel)
 
-    def get(self, dataset, batchsize, preprocessor):
+    def get(self, dataset, batch_size, preprocessor):
         n_classes = dataset.get_labels_number()
         while True:
             dataset.shuffle()
-            raw_batches = dataset.batch(batchsize)
+            raw_batches = dataset.batch_iterator(batch_size)
             for raw_batch in raw_batches:
                 data, labels, gt = [], [], []
                 for labeled_file in raw_batch:
@@ -304,13 +312,9 @@ class LabelGenerator:
 
 if __name__ == '__main__':
 
-    ds1 = VocDataset()
-    # ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2007'))
-    # ds1 = ds1.extend(VocDataset('/home/arthur/Workspace/projects/github/ssd.tf/VOC2008'))
-
     ds = VocDataset('/data/Workspace/data/VOCDebug')
-    lg = LabelGenerator(voc_ssd_300, True)
-    loader = ImageLoader(voc_ssd_300.imgsize)
+    lg = LabelGenerator(SSD_300, True)
+    loader = ImageLoader(SSD_300.imgsize)
     generator = lg.get(ds, 8, loader)
     for item in generator:
         print(len(item))

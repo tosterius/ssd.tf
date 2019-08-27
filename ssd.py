@@ -3,8 +3,6 @@ import tensorflow.contrib.slim as slim
 from tensorflow.python.ops import variable_scope
 from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.contrib.framework import get_variables_to_restore
-from profiles import voc_ssd_300
-import dataset
 
 
 def conv_with_l2_reg(tensor, depth, layer_hw, name):
@@ -198,34 +196,3 @@ class SSD:
         with tf.variable_scope('optimizer'):
             self.optimizer = tf.train.MomentumOptimizer(lr, momentum)
             self.optimizer = self.optimizer.minimize(self.loss, global_step=global_step, name='optimizer')
-
-        return self.loss
-
-
-def train(n_epochs, lr, batch_size, data_set, checkpoint_load_path=None):
-    graph = tf.Graph()
-
-    with tf.Session(graph=graph) as session:
-
-        net = SSD(session, voc_ssd_300, data_set.get_labels_number())
-        net.build_with_vgg('/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt')
-
-        global_step = tf.Variable(0, trainable=False)
-        net.init_loss_and_optimizer(lr, global_step=global_step)
-
-        session.run(tf.global_variables_initializer())
-
-        lg = dataset.LabelGenerator(voc_ssd_300, True)
-        loader = dataset.ImageLoader(voc_ssd_300.imgsize)
-        generator = lg.get(data_set, batch_size, loader)
-        for epoch in range(n_epochs):
-            for x, y, gt in generator:
-                feed = {net.input: x, net.gt: y}
-                result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
-                print(loss_batch)
-
-
-if __name__ == '__main__':
-    ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
-
-    train(10, 0.0001, 2, ds)
