@@ -218,20 +218,22 @@ class VocDataset(Dataset):
 
 
 def encode_location(gt_rect: NormRect, default_box_rect: NormRect):
+    # according to  eq.2 on page 5 in the main article https://arxiv.org/pdf/1512.02325.pdf
     return np.array([
-        gt_rect.xc - default_box_rect.xc,
-        gt_rect.yc - default_box_rect.yc,
-        gt_rect.w / default_box_rect.w,
-        gt_rect.h / default_box_rect.h,
+        (gt_rect.xc - default_box_rect.xc) / default_box_rect.w,
+        (gt_rect.yc - default_box_rect.yc) / default_box_rect.h,
+        np.log(gt_rect.w / default_box_rect.w),
+        np.log(gt_rect.h / default_box_rect.h),
     ])
 
 
-def decode_location(det_rect: np.ndarray, default_box: NormRect):
+def decode_location(det_rect: np.ndarray, default_box_rect: NormRect):
+    # inverse transform for encode_location
     return NormRect(
-        default_box.xc + det_rect[0],
-        default_box.yc + det_rect[1],
-        default_box.w * det_rect[2],
-        default_box.h + det_rect[3],
+        default_box_rect.xc + det_rect[0] * default_box_rect.w,
+        default_box_rect.yc + det_rect[1] * default_box_rect.h,
+        default_box_rect.w * np.exp(det_rect[2]),
+        default_box_rect.h + np.exp(det_rect[3]),
     )
 
 
