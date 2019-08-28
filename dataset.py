@@ -284,7 +284,7 @@ class LabelGenerator:
                 data = np.array(data, dtype=np.float32)
                 labels = np.array(labels, dtype=np.float32)
 
-                yield data, labels, gt
+                yield data, labels, gt  # TODO: should not be empty
             if self.infinity is not True:
                 break
 

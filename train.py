@@ -1,3 +1,4 @@
+import os
 import argparse
 import tensorflow as tf
 
@@ -6,19 +7,28 @@ import dataset
 from profiles import SSD_300
 
 
-def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path=None, log_dir='./', profile=SSD_300):
-    graph = tf.Graph()
+def make_dir(dir_path):
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+    return dir_path
 
-    with tf.Session(graph=graph) as session:
+
+def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, checkpoints_dir, log_dir='./', profile=SSD_300):
+    tf.reset_default_graph()
+    # graph = tf.Graph()
+
+    with tf.Session() as session:
 
         net = ssd.SSD(session, profile, data_set.get_labels_number())
+
+        # net.load_metagraph('/data/Workspace/github/ssd.tf/checkpoints/ssd/checkpoint-epoch-000.ckpt.meta',
+        #                    '/data/Workspace/github/ssd.tf/checkpoints/ssd/')
         net.build_with_vgg(vgg_checkpoint_path)
-        net.build_with_vgg('/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt')
 
         global_step = tf.Variable(0, trainable=False)
         net.init_loss_and_optimizer(lr, global_step=global_step)
 
-        summary_writer = tf.summary.FileWriter(log_dir, graph)
+        summary_writer = tf.summary.FileWriter(log_dir)
         saver = tf.train.Saver()
 
         session.run(tf.global_variables_initializer())
@@ -32,14 +42,28 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path=N
                 result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
                 print(loss_batch)
 
-            # TODO: save checkpoint
+                checkpoint_path = os.path.join(checkpoints_dir, 'checkpoint-epoch-%03d.ckpt' % epoch)
+
+                # for var in saver._var_list:
+                #     print(var)
+
+                saver.save(session, checkpoint_path)
+
+
+def test(batch_size, data_set, log_dir='./', profile=SSD_300):
+
+    pass
 
 
 if __name__ == '__main__':
+
+
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-dir', default='/data/Workspace/data/VOCDebug', help='data directory')
     parser.add_argument('--data-parser', default='pascal-voc', help='data parser name')     # TODO:
     parser.add_argument('--dest-dir', default='checkpoints', help='output directory')
+    parser.add_argument('--experiment', default='ssd', help='experiment name')
     parser.add_argument('--log-dir', default="tb", help='log directory')
     parser.add_argument('--vgg-checkpoint', default='vgg_graph', help='path to pretrained VGG16 model(checkpoint file)')
     parser.add_argument('--n-epochs', type=int, default=100, help='number of epochs')
@@ -50,6 +74,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    checkpoints_dir = make_dir(os.path.join(args.dest_dir, args.experiment))
+
     ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
 
-    train_from_scratch(10, 0.0001, 2, ds)
+    train_from_scratch(10, 0.0001, 2, ds, '/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt', checkpoints_dir)

@@ -37,9 +37,8 @@ class SSD:
 
         # input tensors:
         with tf.variable_scope('image_input'):
-            self.input = tf.placeholder(tf.float32, (None, 300, 300, 3))
+            self.input = tf.placeholder(tf.float32, (None, 300, 300, 3), name='image_input')
         self.gt = None  # looks like [y_0, y_1, .., y_num_of_classes, box_xc, box_yx, box_w, box_h]
-
         # output tensors:
         self.logits = None
         self.classifier = None
@@ -65,6 +64,11 @@ class SSD:
 
         self.__init_ssd_300_part()
         self.__init_detection_layers()
+
+    def load_metagraph(self, metagraph_path, chekpoint_path):
+        saver = tf.train.import_meta_graph(metagraph_path)
+        saver.restore(self.session, tf.train.latest_checkpoint(chekpoint_path))
+        #todo
 
     def __init_vgg_16_part(self, scope='vgg_16'):
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
