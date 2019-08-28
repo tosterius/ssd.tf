@@ -36,9 +36,9 @@ class SSD:
         self.label_dim = self.n_classes + 4  # 4 bbox coords
 
         # input tensors:
-        with tf.variable_scope('image_input'):
-            self.input = tf.placeholder(tf.float32, (None, 300, 300, 3), name='image_input')
-        self.gt = None  # looks like [y_0, y_1, .., y_num_of_classes, box_xc, box_yx, box_w, box_h]
+        self.input = None   # (?, img_h, img_w, img_ch)
+        self.gt = None      # (y0, y1, .., y_num_of_classes, box_xc, box_yx, box_w, box_h)
+
         # output tensors:
         self.logits = None
         self.classifier = None
@@ -52,6 +52,10 @@ class SSD:
         self.localization_loss = None
 
     def build_with_vgg(self, vgg_ckpt_path):
+        with tf.variable_scope('image_input'):
+            shape = (None, self.profile.imgsize[0], self.profile.imgsize[1], 3)
+            self.input = tf.placeholder(tf.float32, shape, name='image_input')
+
         self.__init_vgg_16_part()
         exclude_layers = ['vgg_16/fc6',
                           'vgg_16/dropout6',
@@ -62,13 +66,15 @@ class SSD:
         saver = tf.train.Saver(get_variables_to_restore(exclude=exclude_layers))
         saver.restore(self.session, vgg_ckpt_path)
 
-        self.__init_ssd_300_part()
+        self.__init_ssd_part()
         self.__init_detection_layers()
 
     def load_metagraph(self, metagraph_path, chekpoint_path):
         saver = tf.train.import_meta_graph(metagraph_path)
         saver.restore(self.session, tf.train.latest_checkpoint(chekpoint_path))
-        #todo
+
+        self.input = self.session.graph.get_tensor_by_name('image_input/image_input:0')
+        self.result = self.session.graph.get_tensor_by_name('output/result:0')
 
     def __init_vgg_16_part(self, scope='vgg_16'):
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
@@ -87,7 +93,7 @@ class SSD:
 
                 self.vgg_end_points = utils.convert_collection_to_dict(end_points_collection)
 
-    def __init_ssd_300_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.6):
+    def __init_ssd_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.6):
         with variable_scope.variable_scope(scope, 'ssd_300', [self.net]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):

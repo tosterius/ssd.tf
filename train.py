@@ -15,7 +15,7 @@ def make_dir(dir_path):
 
 def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, checkpoints_dir, log_dir='./', profile=SSD_300):
     tf.reset_default_graph()
-    # graph = tf.Graph()
+    # graph = tf.get_default_graph()
 
     with tf.Session() as session:
 
@@ -23,6 +23,13 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
 
         # net.load_metagraph('/data/Workspace/github/ssd.tf/checkpoints/ssd/checkpoint-epoch-000.ckpt.meta',
         #                    '/data/Workspace/github/ssd.tf/checkpoints/ssd/')
+
+        net.load_metagraph('/home/arthur/Workspace/projects/github/ssd.tf/checkpoints/ssd/checkpoint-epoch-000.ckpt.meta',
+                           '/home/arthur/Workspace/projects/github/ssd.tf/checkpoints/ssd')
+
+        # for op in graph.get_operations():
+        #     print(op.name)
+
         net.build_with_vgg(vgg_checkpoint_path)
 
         global_step = tf.Variable(0, trainable=False)
@@ -76,6 +83,8 @@ if __name__ == '__main__':
 
     checkpoints_dir = make_dir(os.path.join(args.dest_dir, args.experiment))
 
-    ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
+    # ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
+    ds = dataset.VocDataset('/home/arthur/Workspace/data/VOC2007')
 
-    train_from_scratch(10, 0.0001, 2, ds, '/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt', checkpoints_dir)
+    # train_from_scratch(10, 0.0001, 2, ds, '/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt', checkpoints_dir)
+    train_from_scratch(10, 0.0001, 2, ds, '/home/arthur/Workspace/projects/github/ssd.tf/vgg_16.ckpt', checkpoints_dir)
