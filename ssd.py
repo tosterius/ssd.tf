@@ -76,6 +76,9 @@ class SSD:
         self.input = self.session.graph.get_tensor_by_name('image_input/image_input:0')
         self.result = self.session.graph.get_tensor_by_name('output/result:0')
 
+    def load_metagraph_for_optimization(self):
+        pass
+    
     def __init_vgg_16_part(self, scope='vgg_16'):
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'

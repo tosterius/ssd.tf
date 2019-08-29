@@ -19,13 +19,10 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
 
     with tf.Session() as session:
 
-        net = ssd.SSD(session, profile, data_set.get_labels_number())
+        net = ssd.SSD(session, profile, len(data_set.label_names))
 
-        # net.load_metagraph('/data/Workspace/github/ssd.tf/checkpoints/ssd/checkpoint-epoch-000.ckpt.meta',
-        #                    '/data/Workspace/github/ssd.tf/checkpoints/ssd/')
-
-        net.load_metagraph('/home/arthur/Workspace/projects/github/ssd.tf/checkpoints/ssd/checkpoint-epoch-000.ckpt.meta',
-                           '/home/arthur/Workspace/projects/github/ssd.tf/checkpoints/ssd')
+        net.load_metagraph('./checkpoints/ssd/checkpoint-epoch-000.ckpt.meta',
+                           './checkpoints/ssd')
 
         # for op in graph.get_operations():
         #     print(op.name)
@@ -49,12 +46,12 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
                 result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
                 print(loss_batch)
 
-                checkpoint_path = os.path.join(checkpoints_dir, 'checkpoint-epoch-%03d.ckpt' % epoch)
+            checkpoint_path = os.path.join(checkpoints_dir, 'checkpoint-epoch-%03d.ckpt' % epoch)
+            print('Checkpoint "%s" was created' % checkpoint_path)
+            # for var in saver._var_list:
+            #     print(var)
 
-                # for var in saver._var_list:
-                #     print(var)
-
-                saver.save(session, checkpoint_path)
+            saver.save(session, checkpoint_path)
 
 
 def test(batch_size, data_set, log_dir='./', profile=SSD_300):
@@ -63,9 +60,6 @@ def test(batch_size, data_set, log_dir='./', profile=SSD_300):
 
 
 if __name__ == '__main__':
-
-
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-dir', default='/data/Workspace/data/VOCDebug', help='data directory')
     parser.add_argument('--data-parser', default='pascal-voc', help='data parser name')     # TODO:

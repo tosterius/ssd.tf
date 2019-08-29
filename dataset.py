@@ -123,53 +123,56 @@ def calc_overlap(box_as_array, prior_boxes, threshold=0.5):
     return [(i, overlaps[i]) for i in nonzero_idxs]
 
 
+def batch_iterator(data_list, batch_size):
+    """
+    Reterns iterator through data_list in batch of batch_size
+    :param data_list:
+    :param batch_size:
+    :return:
+    """
+    n = len(data_list)
+    for i in range(0, n, batch_size):
+        last = min(i + batch_size, n)
+        portion = data_list[i:last]
+        yield portion
+
+
+def split(data_list, fractions=[0.99, 0.01]):
+    """
+    Splits up data_list into batches
+    :param data_list:
+    :param fractions:
+    :return:
+    """
+    ret_data_lists = []
+    n = len(data_list)
+    counter = 0
+    for frac in fractions:
+        portion_size = int(n * frac)
+        portion = data_list[counter:counter + portion_size]
+        ret_data_lists.append(portion)
+        counter += portion_size
+    return ret_data_lists
+
+
 class Dataset(object):
     def __init__(self):
-        self.data = []
-        self.label_map = {}
-
-    def get_labels_number(self):
-        return len(self.label_map)
-
-    def split(self, fractions=[0.99, 0.01]):
-        ret_datasets = []
-        shuffle(self.data)
-        n = len(self.data)
-        counter = 0
-        for frac in fractions:
-            portion = int(n * frac)
-            ds = Dataset()
-            ret_datasets.append(ds)
-            ds.data = self.data[counter:counter + portion]
-            ds.label_map = self.label_map.copy()
-            counter += portion
-        return ret_datasets
-
-    def extend(self, other):
-        if other.label_map != self.label_map:
-            raise RuntimeError("Datasets must have identical label map")
-        self.data += other.data
-        return self
-
-    def shuffle(self):
-        shuffle(self.data)
-
-    def batch_iterator(self, batch_size):
-        n = len(self.data)
-        for i in range(0, n, batch_size):
-            last = min(i + batch_size, n)
-            portion = self.data[i:last]
-            yield portion
+        self.data_list = []     # list of objects of type LabeledImage
+        self.label_names = {}   # label list [idx] -> name
+        self.label_map = {}     # label map  [name] -> idx
 
 
 class VocDataset(Dataset):
-    def __init__(self, root_directory=None):
+    def __init__(self, root_directory):
         Dataset.__init__(self)
-        self.label_map = {'background': 0,
-                          'aeroplane': 1, 'bicycle': 2, 'bird': 3, 'boat': 4, 'bottle': 5,
-                          'bus': 6, 'car': 7, 'cat': 8, 'chair': 9, 'cow': 10,
-                          'diningtable': 11, 'dog': 12, 'horse': 13, 'motorbike': 14, 'person': 15,
-                          'pottedplant': 16, 'sheep': 17, 'sofa': 18, 'train': 19, 'tvmonitor': 20}
+
+        self.label_decode_map = ['background',
+                                 'aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
+                                 'bus', 'car', 'cat', 'chair', 'cow',
+                                 'diningtable', 'dog', 'horse', 'motorbike', 'person',
+                                 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
+
+        self.label_encode_map = {key: value for (value, key) in enumerate(self.label_decode_map)}
 
         if root_directory is not None:
             self.init(root_directory)
@@ -200,7 +203,7 @@ class VocDataset(Dataset):
 
         labeled_file = LabeledImage(filepath, (img_h, img_w), [])
         for o in root.iter('object'):
-            label = self.label_map[o.find('name').text]
+            label = self.label_encode_map[o.find('name').text]
             bbox = o.find('bndbox')
             xmin = int(bbox.find('xmin').text)
             ymin = int(bbox.find('ymin').text)
@@ -213,7 +216,7 @@ class VocDataset(Dataset):
 
             labeled_file.objects.append(LabeledObject(label=label, rect=NormRect(xc, yc, w, h)))
 
-        self.data.append(labeled_file)
+        self.data_list.append(labeled_file)
 
 
 def encode_location(gt_rect: NormRect, default_box_rect: NormRect):
@@ -265,13 +268,12 @@ class LabelGenerator:
         self.n_prior_boxes = len(self.default_boxes_rel)
 
     def get(self, dataset, batch_size, preprocessor):
-        n_classes = dataset.get_labels_number()
+        n_classes = len(dataset.label_decode_map)
         while True:
-            dataset.shuffle()
-            raw_batches = dataset.batch_iterator(batch_size)
-            for raw_batch in raw_batches:
-                data, labels, gt = [], [], []
-                for labeled_file in raw_batch:
+            shuffle(dataset.data_list)
+            data, labels, gt = [], [], []
+            while len(data) < batch_size:
+                for labeled_file in dataset.data_list:
                     labeled_image = preprocessor(labeled_file)
                     label = self.__process_labeled_file(labeled_image, n_classes)
 
@@ -281,10 +283,10 @@ class LabelGenerator:
                         labels.append(label)
                         gt.append(labeled_image.objects)
 
-                data = np.array(data, dtype=np.float32)
-                labels = np.array(labels, dtype=np.float32)
+            data = np.array(data, dtype=np.float32)
+            labels = np.array(labels, dtype=np.float32)
+            yield data, labels, gt
 
-                yield data, labels, gt  # TODO: should not be empty
             if self.infinity is not True:
                 break
 
