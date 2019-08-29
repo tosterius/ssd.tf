@@ -77,7 +77,12 @@ class SSD:
         self.result = self.session.graph.get_tensor_by_name('output/result:0')
 
     def load_metagraph_for_optimization(self):
-        pass
+        self.gt = self.session.graph.get_tensor_by_name('labels:0')
+        self.optimizer = self.session.graph.get_tensor_by_name('optimizer/optimizer:0')
+        self.l2_norm = self.session.graph.get_tensor_by_name('total_loss/l2_loss:0')
+        self.loss = self.session.graph.get_tensor_by_name('total_loss/loss:0')
+        self.confidence_loss = self.session.graph.get_tensor_by_name('confidence_loss/confidence_loss:0')
+        self.localization_loss = self.session.graph.get_tensor_by_name('localization_loss/localization_loss:0')
     
     def __init_vgg_16_part(self, scope='vgg_16'):
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
