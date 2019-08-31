@@ -123,9 +123,13 @@ def calc_overlap(box_as_array, prior_boxes, threshold=0.5):
     return [(i, overlaps[i]) for i in nonzero_idxs]
 
 
+def prediction_to_bboxes(prediction, default_boxes, confidence_thresh):
+    pass
+
+
 def batch_iterator(data_list, batch_size):
     """
-    Reterns iterator through data_list in batch of batch_size
+    Returns iterator through data_list in batch of batch_size
     :param data_list:
     :param batch_size:
     :return:
