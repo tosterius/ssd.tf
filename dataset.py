@@ -170,13 +170,13 @@ class VocDataset(Dataset):
     def __init__(self, root_directory):
         Dataset.__init__(self)
 
-        self.label_decode_map = ['background',
-                                 'aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
-                                 'bus', 'car', 'cat', 'chair', 'cow',
-                                 'diningtable', 'dog', 'horse', 'motorbike', 'person',
-                                 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
+        self.label_names = ['background',
+                            'aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
+                            'bus', 'car', 'cat', 'chair', 'cow',
+                            'diningtable', 'dog', 'horse', 'motorbike', 'person',
+                            'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
 
-        self.label_encode_map = {key: value for (value, key) in enumerate(self.label_decode_map)}
+        self.label_map = {key: value for (value, key) in enumerate(self.label_names)}
 
         if root_directory is not None:
             self.init(root_directory)
@@ -207,7 +207,7 @@ class VocDataset(Dataset):
 
         labeled_file = LabeledImage(filepath, (img_h, img_w), [])
         for o in root.iter('object'):
-            label = self.label_encode_map[o.find('name').text]
+            label = self.label_map[o.find('name').text]
             bbox = o.find('bndbox')
             xmin = int(bbox.find('xmin').text)
             ymin = int(bbox.find('ymin').text)
@@ -272,7 +272,7 @@ class LabelGenerator:
         self.n_prior_boxes = len(self.default_boxes_rel)
 
     def get(self, dataset, batch_size, preprocessor):
-        n_classes = len(dataset.label_decode_map)
+        n_classes = len(dataset.label_names)
         while True:
             shuffle(dataset.data_list)
             data, labels, gt = [], [], []
