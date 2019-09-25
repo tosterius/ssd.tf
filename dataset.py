@@ -32,11 +32,42 @@ class LabeledImage:
         self.data = data
 
 
-def filter_and_nms(detections, scores, imgsize, threshold):
-    for det in detections:
-        pass
+def nms(detections, threshold):
+    rects = np.empty(shape=(len(detections), 4))
+    scores = np.empty(shape=(len(detections), ))
+    for i, det in enumerate(detections):
+        rects[i] = det[2].as_array()
+        scores[i] = det[1]
 
-    raise NotImplementedError()
+    xmin, ymin, xmax, ymax = rects[:, 0], rects[:, 1], rects[:, 2], rects[:, 3]
+
+    area = (xmax - xmin + 1) * (ymax - ymin + 1)
+    idxs = np.argsort(scores)
+    pick = []
+
+    while len(idxs) > 0:
+        last = idxs.shape[0] - 1
+        i = idxs[last]
+        idxs = np.delete(idxs, last)
+        pick.append(i)
+
+        xxmin = np.maximum(xmin[i], xmin[idxs])
+        xxmax = np.minimum(xmax[i], xmax[idxs])
+        yymin = np.maximum(ymin[i], ymin[idxs])
+        yymax = np.minimum(ymax[i], ymax[idxs])
+
+        w = np.maximum(0, xxmax - xxmin + 1)
+        h = np.maximum(0, yymax - yymin + 1)
+        intersection = w * h
+
+        union = area[i] + area[idxs] - intersection
+        iou = intersection / union
+        overlap = iou > threshold
+        suppress = np.nonzero(overlap)[0]
+        idxs = np.delete(idxs, suppress)
+
+    return pick
+
 
 def get_prior_boxes(profile):
     """
@@ -147,7 +178,7 @@ def decode_location(det_rect: np.ndarray, default_box_rect: NormRect):
 
 
 def predictions_to_bboxes(predictions, default_boxes, confidence_thresh):
-    filtered_detections = []
+    decoded_detections = []
     n_classes = predictions.shape[1] - 4
     bbox_labels = np.argmax(predictions[:, :n_classes - 1], axis=1)
     bbox_confidences = predictions[np.arange(len(bbox_labels)), bbox_labels]
@@ -157,8 +188,27 @@ def predictions_to_bboxes(predictions, default_boxes, confidence_thresh):
         if bbox_confidences[i] < confidence_thresh:
             break
         norm_rect = decode_location(predictions[i, n_classes:], default_boxes[i].rect)
-        filtered_detections.append((bbox_labels[i], bbox_confidences[i], norm_rect))
-    return filtered_detections
+        decoded_detections.append([bbox_labels[i], bbox_confidences[i], norm_rect])
+    return decoded_detections
+
+
+def net_results_to_bboxes(predictions, default_boxes, img_size,
+                          confidence_thresh=0.1, overlap_thresh=0.5, number_thresh=100):
+    result = []
+    decoded_detections = predictions_to_bboxes(predictions, default_boxes, confidence_thresh)[:number_thresh]
+    grouped_by_label_detections = {}
+    for det in decoded_detections:
+        det[2] = norm_rect_to_rect(img_size, det[2])
+        if det[0] in grouped_by_label_detections:
+            grouped_by_label_detections[det[0]].append(det)
+        else:
+            grouped_by_label_detections[det[0]] = [det,]
+
+    for label, detections in grouped_by_label_detections.items():
+        pick = nms(detections, overlap_thresh)
+        for i in pick:
+            result.append(detections[i])
+    return result
 
 
 def batch_iterator(data_list, batch_size):
@@ -313,20 +363,19 @@ class LabelGenerator:
         label = np.zeros((self.n_prior_boxes, label_dim), dtype=np.float32)
         label[:, n_classes - 1] = 1
 
-        map = {}
+        tmp_map = {}
         for labeled_object in labeled_file.objects:
             rect = norm_rect_to_rect(self.img_size, labeled_object.rect)  # debug
             overlaps = calc_overlap(rect.as_array(), self.default_boxes_abs, self.overlap_thresh)
 
             for id, score in overlaps:
-                if id in map and map[id] >= score:
+                if id in tmp_map and tmp_map[id] >= score:
                     continue
-                map[id] = score
+                tmp_map[id] = score
                 label[id, :n_classes] = 0.0
                 label[id, labeled_object.label] = 1.0
                 label[id, n_classes:] = encode_location(labeled_object.rect, self.default_boxes_rel[id].rect)
 
-            # best_overlap = max(overlaps, key=lambda x: x[1])
         return label
 
 

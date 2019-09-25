@@ -45,7 +45,7 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
                 feed = {net.input: x, net.gt: y}
                 result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
                 for i in range(result.shape[0]):
-                    predictions = dataset.predictions_to_bboxes(result[i], lg.default_boxes_rel, 0.1)
+                    detections = dataset.net_results_to_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
                     # todo
                 print(loss_batch)
 
