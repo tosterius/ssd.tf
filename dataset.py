@@ -32,7 +32,10 @@ class LabeledImage:
         self.data = data
 
 
-def nms(detections, scores, threshold):
+def filter_and_nms(detections, scores, imgsize, threshold):
+    for det in detections:
+        pass
+
     raise NotImplementedError()
 
 def get_prior_boxes(profile):
@@ -123,8 +126,39 @@ def calc_overlap(box_as_array, prior_boxes, threshold=0.5):
     return [(i, overlaps[i]) for i in nonzero_idxs]
 
 
-def prediction_to_bboxes(prediction, default_boxes, confidence_thresh):
-    pass
+def encode_location(gt_rect: NormRect, default_box_rect: NormRect):
+    # according to  eq.2 on page 5 in the main article https://arxiv.org/pdf/1512.02325.pdf
+    return np.array([
+        (gt_rect.xc - default_box_rect.xc) / default_box_rect.w,
+        (gt_rect.yc - default_box_rect.yc) / default_box_rect.h,
+        np.log(gt_rect.w / default_box_rect.w),
+        np.log(gt_rect.h / default_box_rect.h),
+    ])
+
+
+def decode_location(det_rect: np.ndarray, default_box_rect: NormRect):
+    # inverse transform for encode_location
+    return NormRect(
+        default_box_rect.xc + det_rect[0] * default_box_rect.w,
+        default_box_rect.yc + det_rect[1] * default_box_rect.h,
+        default_box_rect.w * np.exp(det_rect[2]),
+        default_box_rect.h + np.exp(det_rect[3]),
+    )
+
+
+def predictions_to_bboxes(predictions, default_boxes, confidence_thresh):
+    filtered_detections = []
+    n_classes = predictions.shape[1] - 4
+    bbox_labels = np.argmax(predictions[:, :n_classes - 1], axis=1)
+    bbox_confidences = predictions[np.arange(len(bbox_labels)), bbox_labels]
+    sorted_detections = np.argsort(bbox_confidences)
+
+    for i in reversed(sorted_detections):
+        if bbox_confidences[i] < confidence_thresh:
+            break
+        norm_rect = decode_location(predictions[i, n_classes:], default_boxes[i].rect)
+        filtered_detections.append((bbox_labels[i], bbox_confidences[i], norm_rect))
+    return filtered_detections
 
 
 def batch_iterator(data_list, batch_size):
@@ -221,26 +255,6 @@ class VocDataset(Dataset):
             labeled_file.objects.append(LabeledObject(label=label, rect=NormRect(xc, yc, w, h)))
 
         self.data_list.append(labeled_file)
-
-
-def encode_location(gt_rect: NormRect, default_box_rect: NormRect):
-    # according to  eq.2 on page 5 in the main article https://arxiv.org/pdf/1512.02325.pdf
-    return np.array([
-        (gt_rect.xc - default_box_rect.xc) / default_box_rect.w,
-        (gt_rect.yc - default_box_rect.yc) / default_box_rect.h,
-        np.log(gt_rect.w / default_box_rect.w),
-        np.log(gt_rect.h / default_box_rect.h),
-    ])
-
-
-def decode_location(det_rect: np.ndarray, default_box_rect: NormRect):
-    # inverse transform for encode_location
-    return NormRect(
-        default_box_rect.xc + det_rect[0] * default_box_rect.w,
-        default_box_rect.yc + det_rect[1] * default_box_rect.h,
-        default_box_rect.w * np.exp(det_rect[2]),
-        default_box_rect.h + np.exp(det_rect[3]),
-    )
 
 
 class ImageLoader:
