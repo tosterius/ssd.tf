@@ -10,7 +10,7 @@ from utils import NormRect, norm_rect_to_rect, calc_jaccard_overlap, encode_loca
 
 DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
 
-LabeledObject = namedtuple('LabeledObject', ['label', 'rect'])
+LabeledObject = namedtuple('LabeledObject', ['rect', 'label'])
 
 
 class LabeledImage:

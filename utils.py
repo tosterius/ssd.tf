@@ -13,7 +13,7 @@ class Rect:
         return np.array([self.x0, self.y0, self.x1, self.y1])
 
 
-DetectedObject = namedtuple('DetectedObject', ['label', 'rect', 'score'])
+DetectedObject = namedtuple('DetectedObject', ['rect', 'label', 'score'])
 
 
 def norm_rect_to_rect(img_size: tuple, rect: NormRect):
@@ -42,8 +42,8 @@ def nms(detections, threshold):
     rects = np.empty(shape=(len(detections), 4))
     scores = np.empty(shape=(len(detections),))
     for i, det in enumerate(detections):
-        rects[i] = det[2].as_array()
-        scores[i] = det[1]
+        rects[i] = det[0].as_array()
+        scores[i] = det[2]
 
     xmin, ymin, xmax, ymax = rects[:, 0], rects[:, 1], rects[:, 2], rects[:, 3]
 
@@ -121,7 +121,7 @@ def nn_predictions_to_bboxes(predictions, default_boxes, confidence_thresh):
         if bbox_confidences[i] < confidence_thresh:
             break
         norm_rect = decode_location(predictions[i, n_classes:], default_boxes[i].rect)
-        decoded_detections.append([bbox_labels[i], bbox_confidences[i], norm_rect])
+        decoded_detections.append([norm_rect, bbox_labels[i], bbox_confidences[i]])
     return decoded_detections
 
 
@@ -131,11 +131,11 @@ def net_results_to_bboxes(predictions, default_boxes, img_size,
     decoded_detections = nn_predictions_to_bboxes(predictions, default_boxes, confidence_thresh)[:number_thresh]
     grouped_by_label_detections = {}
     for det in decoded_detections:
-        det[2] = norm_rect_to_rect(img_size, det[2])
+        det[0] = norm_rect_to_rect(img_size, det[0])
         if det[0] in grouped_by_label_detections:
-            grouped_by_label_detections[det[0]].append(det)
+            grouped_by_label_detections[det[1]].append(det)
         else:
-            grouped_by_label_detections[det[0]] = [det, ]
+            grouped_by_label_detections[det[1]] = [det, ]
 
     for label, detections in grouped_by_label_detections.items():
         pick = nms(detections, overlap_thresh)

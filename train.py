@@ -6,6 +6,7 @@ import ssd
 import dataset
 import utils
 
+from collections import defaultdict, Counter
 from profiles import SSD_300
 
 
@@ -17,11 +18,13 @@ def make_dir(dir_path):
 
 class PrecisionCalculator:
     def __init__(self):
-        self.gt_objects = []
-        self.detections =[]
+        self.gt_samples = []
+        self.detections = defaultdict(list)
 
-    def add(self, gt_objects, detections):
-        pass
+    def add(self, gt_sample, detections):
+        self.gt_samples.append(gt_sample)
+        for rect, label, score in detections:
+            self.detections[label] = [rect, label, score, len(self.gt_samples) - 1]
 
     def calc(self):
         pass
