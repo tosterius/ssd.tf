@@ -6,18 +6,7 @@ from collections import namedtuple
 from random import shuffle
 from profiles import SSD_300
 
-
-NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
-
-
-class Rect:
-    def __init__(self, x0, y0, x1, y1):
-        self.x0, self.y0 = x0, y0
-        self.x1, self.y1 = x1, y1
-
-    def as_array(self):
-        return np.array([self.x0, self.y0, self.x1, self.y1])
-
+from utils import NormRect, norm_rect_to_rect, calc_jaccard_overlap, encode_location
 
 DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
 
@@ -32,46 +21,9 @@ class LabeledImage:
         self.data = data
 
 
-def nms(detections, threshold):
-    rects = np.empty(shape=(len(detections), 4))
-    scores = np.empty(shape=(len(detections), ))
-    for i, det in enumerate(detections):
-        rects[i] = det[2].as_array()
-        scores[i] = det[1]
-
-    xmin, ymin, xmax, ymax = rects[:, 0], rects[:, 1], rects[:, 2], rects[:, 3]
-
-    area = (xmax - xmin + 1) * (ymax - ymin + 1)
-    idxs = np.argsort(scores)
-    pick = []
-
-    while len(idxs) > 0:
-        last = idxs.shape[0] - 1
-        i = idxs[last]
-        idxs = np.delete(idxs, last)
-        pick.append(i)
-
-        xxmin = np.maximum(xmin[i], xmin[idxs])
-        xxmax = np.minimum(xmax[i], xmax[idxs])
-        yymin = np.maximum(ymin[i], ymin[idxs])
-        yymax = np.minimum(ymax[i], ymax[idxs])
-
-        w = np.maximum(0, xxmax - xxmin + 1)
-        h = np.maximum(0, yymax - yymin + 1)
-        intersection = w * h
-
-        union = area[i] + area[idxs] - intersection
-        iou = intersection / union
-        overlap = iou > threshold
-        suppress = np.nonzero(overlap)[0]
-        idxs = np.delete(idxs, suppress)
-
-    return pick
-
-
 def get_prior_boxes(profile):
     """
-    Get sizes of default bounding boxes for every scale.
+    Get sizes of default bounding boxes for all scales.
     See https://arxiv.org/pdf/1512.02325.pdf page 6
     :param profile:
     :return:
@@ -108,22 +60,6 @@ def get_prior_boxes(profile):
     return default_boxes
 
 
-def norm_rect_to_rect(img_size: tuple, rect: NormRect):
-    xc = rect.xc * img_size[0]
-    yc = rect.yc * img_size[1]
-    w_half = rect.w * img_size[0] / 2
-    h_half = rect.h * img_size[1] / 2
-    return Rect(int(xc - w_half), int(yc - h_half), int(xc + w_half), int(yc + h_half))
-
-
-def rect_to_norm_rect(img_size: tuple, rect: Rect):
-    xc = (rect.x0 + rect.x1) / 2.0 / img_size[0]
-    yc = (rect.y0 + rect.y1) / 2.0 / img_size[1]
-    w = float(rect.x1 - rect.x0) / img_size[0]
-    h = float(rect.y1 - rect.y0) / img_size[1]
-    return NormRect(xc, yc, w, h)
-
-
 def default_boxes_to_array(default_boxes, img_size):
     arr = np.zeros((len(default_boxes), 4))
     for i, box in enumerate(default_boxes):
@@ -135,80 +71,11 @@ def default_boxes_to_array(default_boxes, img_size):
     return arr
 
 
-def calc_jaccard_overlap(box_as_array, prior_boxes):
-    area_prior = (prior_boxes[:, 2] - prior_boxes[:, 0] + 1) * (prior_boxes[:, 3] - prior_boxes[:, 1] + 1)
-    area_box = (box_as_array[2] - box_as_array[0] + 1) * (box_as_array[3] - box_as_array[1] + 1)
-
-    xmin = np.maximum(box_as_array[0], prior_boxes[:, 0])
-    ymin = np.maximum(box_as_array[1], prior_boxes[:, 1])
-    xmax = np.minimum(box_as_array[2], prior_boxes[:, 2])
-    ymax = np.minimum(box_as_array[3], prior_boxes[:, 3])
-
-    w = np.maximum(0, xmax - xmin + 1)
-    h = np.maximum(0, ymax - ymin + 1)
-    intersection = w * h
-    return intersection / (area_box + area_prior - intersection)
-
-
 def calc_overlap(box_as_array, prior_boxes, threshold=0.5):
     overlaps = calc_jaccard_overlap(box_as_array, prior_boxes)
     flags = overlaps > threshold
     nonzero_idxs = np.nonzero(flags)[0]
     return [(i, overlaps[i]) for i in nonzero_idxs]
-
-
-def encode_location(gt_rect: NormRect, default_box_rect: NormRect):
-    # according to  eq.2 on page 5 in the main article https://arxiv.org/pdf/1512.02325.pdf
-    return np.array([
-        (gt_rect.xc - default_box_rect.xc) / default_box_rect.w,
-        (gt_rect.yc - default_box_rect.yc) / default_box_rect.h,
-        np.log(gt_rect.w / default_box_rect.w),
-        np.log(gt_rect.h / default_box_rect.h),
-    ])
-
-
-def decode_location(det_rect: np.ndarray, default_box_rect: NormRect):
-    # inverse transform for encode_location
-    return NormRect(
-        default_box_rect.xc + det_rect[0] * default_box_rect.w,
-        default_box_rect.yc + det_rect[1] * default_box_rect.h,
-        default_box_rect.w * np.exp(det_rect[2]),
-        default_box_rect.h + np.exp(det_rect[3]),
-    )
-
-
-def predictions_to_bboxes(predictions, default_boxes, confidence_thresh):
-    decoded_detections = []
-    n_classes = predictions.shape[1] - 4
-    bbox_labels = np.argmax(predictions[:, :n_classes - 1], axis=1)
-    bbox_confidences = predictions[np.arange(len(bbox_labels)), bbox_labels]
-    sorted_detections = np.argsort(bbox_confidences)
-
-    for i in reversed(sorted_detections):
-        if bbox_confidences[i] < confidence_thresh:
-            break
-        norm_rect = decode_location(predictions[i, n_classes:], default_boxes[i].rect)
-        decoded_detections.append([bbox_labels[i], bbox_confidences[i], norm_rect])
-    return decoded_detections
-
-
-def net_results_to_bboxes(predictions, default_boxes, img_size,
-                          confidence_thresh=0.1, overlap_thresh=0.5, number_thresh=100):
-    result = []
-    decoded_detections = predictions_to_bboxes(predictions, default_boxes, confidence_thresh)[:number_thresh]
-    grouped_by_label_detections = {}
-    for det in decoded_detections:
-        det[2] = norm_rect_to_rect(img_size, det[2])
-        if det[0] in grouped_by_label_detections:
-            grouped_by_label_detections[det[0]].append(det)
-        else:
-            grouped_by_label_detections[det[0]] = [det,]
-
-    for label, detections in grouped_by_label_detections.items():
-        pick = nms(detections, overlap_thresh)
-        for i in pick:
-            result.append(detections[i])
-    return result
 
 
 def batch_iterator(data_list, batch_size):
@@ -245,9 +112,9 @@ def split(data_list, fractions=[0.99, 0.01]):
 
 class Dataset(object):
     def __init__(self):
-        self.data_list = []     # list of objects of type LabeledImage
-        self.label_names = {}   # label list [idx] -> name
-        self.label_map = {}     # label map  [name] -> idx
+        self.data_list = []  # list of objects of type LabeledImage
+        self.label_names = {}  # label list [idx] -> name
+        self.label_map = {}  # label map  [name] -> idx
 
 
 class VocDataset(Dataset):

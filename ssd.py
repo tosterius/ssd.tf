@@ -43,7 +43,7 @@ class SSD:
         self.logits = None
         self.classifier = None
         self.detections = None
-        self.result = None
+        self.result = None  # (?, 8652, 25)     for ssd 300 and default profile
 
         self.optimizer = None
         self.l2_norm = 0

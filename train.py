@@ -4,6 +4,8 @@ import tensorflow as tf
 
 import ssd
 import dataset
+import utils
+
 from profiles import SSD_300
 
 
@@ -11,6 +13,18 @@ def make_dir(dir_path):
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
     return dir_path
+
+
+class PrecisionCalculator:
+    def __init__(self):
+        self.gt_objects = []
+        self.detections =[]
+
+    def add(self, gt_objects, detections):
+        pass
+
+    def calc(self):
+        pass
 
 
 def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, checkpoints_dir, log_dir='./', profile=SSD_300):
@@ -45,7 +59,7 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
                 feed = {net.input: x, net.gt: y}
                 result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
                 for i in range(result.shape[0]):
-                    detections = dataset.net_results_to_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
+                    detections = utils.net_results_to_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
                     # todo
                 print(loss_batch)
 
