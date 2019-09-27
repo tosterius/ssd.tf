@@ -16,7 +16,7 @@ def make_dir(dir_path):
     return dir_path
 
 
-class PrecisionCalculator:
+class PrecisionMetric:
     def __init__(self):
         self.gt_samples = []
         self.detections = defaultdict(list)
@@ -27,12 +27,22 @@ class PrecisionCalculator:
             self.detections[label] = [rect, label, score, len(self.gt_samples) - 1]
 
     def calc(self):
-        pass
+        precisions = {}
+        samples_by_label = defaultdict(list)
+
+        return precisions
+
+    def reset(self):
+        self.detections.clear()
+        self.gt_samples.clear()
+
 
 
 def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, checkpoints_dir, log_dir='./', profile=SSD_300):
     tf.reset_default_graph()
     # graph = tf.get_default_graph()
+
+    precision_metric = PrecisionMetric()
 
     with tf.Session() as session:
 
@@ -63,8 +73,13 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
                 result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
                 for i in range(result.shape[0]):
                     detections = utils.net_results_to_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
+                    gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
+                    precision_metric.add(gt_objects, detections)
+
                     # todo
                 print(loss_batch)
+
+            precision_metric.calc()
 
             checkpoint_path = os.path.join(checkpoints_dir, 'checkpoint-epoch-%03d.ckpt' % epoch)
             print('Checkpoint "%s" was created' % checkpoint_path)

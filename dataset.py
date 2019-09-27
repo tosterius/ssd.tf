@@ -13,6 +13,14 @@ DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
 LabeledObject = namedtuple('LabeledObject', ['rect', 'label'])
 
 
+def lo_to_abs_rects(img_size, list_of_lo):
+    ret = []
+    for lo in list_of_lo:
+        rect = norm_rect_to_rect(img_size, lo.rect)
+        ret.append([rect, lo.label])
+    return ret
+
+
 class LabeledImage:
     def __init__(self, filepath, size, objects, data=None):
         self.filepath = filepath
