@@ -1,6 +1,7 @@
 import os
 import argparse
 import tensorflow as tf
+import numpy as np
 
 import ssd
 import dataset
@@ -28,14 +29,28 @@ class PrecisionMetric:
 
     def calc(self):
         precisions = {}
-        samples_by_label = defaultdict(list)
+
+        label_counter = Counter()
+        gt_map = defaultdict(dict)
+
+        for sample_id, boxes in enumerate(self.gt_samples):
+            boxes_by_class = defaultdict(list)
+            for box in boxes:
+                label_counter[box[1]] += 1
+                boxes_by_class[box[1]].append(box[0])
+
+            for k, v in boxes_by_class.items():
+                arr = np.zeros((len(v), 4))
+                match = np.zeros((len(v)), dtype=np.bool)
+                for i, box in enumerate(v):
+                    arr[i] = box.as_array()
+                gt_map[k][sample_id] = (arr, match)
 
         return precisions
 
     def reset(self):
         self.detections.clear()
         self.gt_samples.clear()
-
 
 
 def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, checkpoints_dir, log_dir='./', profile=SSD_300):
@@ -72,12 +87,13 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
                 feed = {net.input: x, net.gt: y}
                 result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
                 for i in range(result.shape[0]):
-                    detections = utils.net_results_to_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
+                    detections = utils.get_filtered_result_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
                     gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
                     precision_metric.add(gt_objects, detections)
 
                     # todo
                 print(loss_batch)
+                precision_metric.calc()
 
             precision_metric.calc()
 
