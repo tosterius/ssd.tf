@@ -110,7 +110,7 @@ def decode_location(det_rect: np.ndarray, default_box_rect: NormRect):
     )
 
 
-def nn_predictions_to_bboxes(predictions, default_boxes, confidence_thresh):
+def net_predictions_to_bboxes(predictions, default_boxes, confidence_thresh):
     decoded_detections = []
     n_classes = predictions.shape[1] - 4
     bbox_labels = np.argmax(predictions[:, :n_classes - 1], axis=1)
@@ -125,10 +125,10 @@ def nn_predictions_to_bboxes(predictions, default_boxes, confidence_thresh):
     return decoded_detections
 
 
-def net_results_to_bboxes(predictions, default_boxes, img_size,
-                          confidence_thresh=0.1, overlap_thresh=0.5, number_thresh=100):
+def get_filtered_result_bboxes(results, default_boxes, img_size,
+                               confidence_thresh=0.1, overlap_thresh=0.5, number_thresh=100):
     result = []
-    decoded_detections = nn_predictions_to_bboxes(predictions, default_boxes, confidence_thresh)[:number_thresh]
+    decoded_detections = net_predictions_to_bboxes(results, default_boxes, confidence_thresh)[:number_thresh]
     grouped_by_label_detections = {}
     for det in decoded_detections:
         det[0] = norm_rect_to_rect(img_size, det[0])
