@@ -1,5 +1,6 @@
 import numpy as np
 from collections import namedtuple
+from collections import defaultdict, Counter
 
 NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
 
@@ -145,3 +146,96 @@ def get_filtered_result_bboxes(results, default_boxes, img_size,
         for i in pick:
             result.append(detections[i])
     return result
+
+
+class PrecisionMetric:
+    def __init__(self):
+        self.overlap_thresh = 0.5
+        self.gt_samples = []
+        self.det_rects = defaultdict(list)
+        self.det_confs = defaultdict(list)
+        self.det_sample_ids = defaultdict(list)
+
+    def add(self, gt_sample, detections):
+        self.gt_samples.append(gt_sample)
+        for rect, label, score in detections:
+            self.det_rects[label].append(rect.as_array())
+            self.det_confs[label].append(score)
+            self.det_sample_ids[label].append(len(self.gt_samples) - 1)
+
+    def reset(self):
+        self.det_rects.clear()
+        self.det_confs.clear()
+        self.det_sample_ids.clear()
+        self.gt_samples.clear()
+
+    def calc(self):
+        mean = 0.0
+        precisions = {}
+        label_counter = Counter()
+        gt_map = defaultdict(dict)
+
+        for sample_id, boxes in enumerate(self.gt_samples):
+            gt_rects_by_class = defaultdict(list)
+            for gt_rect, gt_label in boxes:
+                label_counter[gt_label] += 1
+                gt_rects_by_class[gt_label].append(gt_rect.as_array(np.float32))
+
+            for gt_label, gt_rects in gt_rects_by_class.items():
+                arr = np.array(gt_rects)
+                match = np.zeros((len(gt_rects)), dtype=np.bool)
+                gt_map[gt_label][sample_id] = (arr, match)
+
+        for gt_label, matches_by_sample_id in gt_map.items():
+            rects = np.array(self.det_rects[gt_label], dtype=np.float32)
+            n_rects = rects.shape[0]
+            if n_rects == 0:
+                precisions[gt_label] = 0
+                continue
+
+            confs = np.array(self.det_confs[gt_label], dtype=np.float32)
+            sample_ids = np.array(self.det_sample_ids[gt_label], dtype=np.int)
+            idxs_max = np.argsort(-confs)
+            rects = rects[idxs_max]
+            sample_ids = sample_ids[idxs_max]
+
+            tps, fps = np.zeros(n_rects), np.zeros(n_rects)
+
+            for i in range(n_rects):
+                sample_id = sample_ids[i]
+                if sample_id not in matches_by_sample_id:
+                    fps[i] = 1
+                    continue
+
+                gt_box, matched = matches_by_sample_id[sample_id]
+                det_box = rects[i]
+                iou = calc_jaccard_overlap(det_box, gt_box)
+                max_idx = np.argmax(iou)
+
+                if matched[max_idx]:
+                    fps[i] = 1
+                    continue
+
+                if iou[max_idx] < self.overlap_thresh:
+                    fps[i] = 1
+                    continue
+
+                tps[i] = 1
+                matched[max_idx] = True
+
+            fps = np.cumsum(fps)
+            tps = np.cumsum(tps)
+            recall = tps / label_counter[gt_label]
+            prec = tps / (tps + fps)
+            ap = 0
+            for r_tilde in np.arange(0, 1.1, 0.1):
+                prec_rec = prec[recall >= r_tilde]
+                if prec_rec.size > 0:
+                    ap += np.amax(prec_rec)
+
+            ap /= 11.
+            precisions[gt_label] = ap
+            mean += ap
+        n_classes = len(precisions)
+        mean = 0 if n_classes == 0 else mean / n_classes
+        return precisions, mean
