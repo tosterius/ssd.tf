@@ -12,8 +12,8 @@ class Rect:
     def __repr__(self):
         return "Rect({}, {}, {}, {})".format(self.x0, self.x1, self.y0, self.y1)
 
-    def as_array(self):
-        return np.array([self.x0, self.y0, self.x1, self.y1])
+    def as_array(self, dtype=None):
+        return np.array([self.x0, self.y0, self.x1, self.y1], dtype=dtype)
 
 
 DetectedObject = namedtuple('DetectedObject', ['rect', 'label', 'score'])
