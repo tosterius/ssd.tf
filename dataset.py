@@ -225,6 +225,8 @@ class LabelGenerator:
                         data.append(labeled_image.data)
                         labels.append(label)
                         gt.append(labeled_image.objects)
+                    if len(data) >= batch_size:
+                        break
 
             data = np.array(data, dtype=np.float32)
             labels = np.array(labels, dtype=np.float32)
