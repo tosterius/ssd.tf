@@ -9,6 +9,9 @@ class Rect:
         self.x0, self.y0 = x0, y0
         self.x1, self.y1 = x1, y1
 
+    def __repr__(self):
+        return "Rect({}, {}, {}, {})".format(self.x0, self.x1, self.y0, self.y1)
+
     def as_array(self):
         return np.array([self.x0, self.y0, self.x1, self.y1])
 

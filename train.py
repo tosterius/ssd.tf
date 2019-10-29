@@ -25,7 +25,7 @@ class PrecisionMetric:
     def add(self, gt_sample, detections):
         self.gt_samples.append(gt_sample)
         for rect, label, score in detections:
-            self.detections[label] = [rect, label, score, len(self.gt_samples) - 1]
+            self.detections[label].append([rect, label, score, len(self.gt_samples) - 1])
 
     def calc(self):
         precisions = {}
