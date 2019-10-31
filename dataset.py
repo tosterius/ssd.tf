@@ -1,6 +1,7 @@
 import os
 import cv2
 import numpy as np
+import pickle
 import xml.etree.ElementTree as ET
 from collections import namedtuple
 from random import shuffle
@@ -126,7 +127,7 @@ class Dataset(object):
 
 
 class VocDataset(Dataset):
-    def __init__(self, root_directory):
+    def __init__(self, root_directory, pickled_path=None):
         Dataset.__init__(self)
 
         self.label_names = ['background',
@@ -137,8 +138,23 @@ class VocDataset(Dataset):
 
         self.label_map = {key: value for (value, key) in enumerate(self.label_names)}
 
+        if pickled_path is not None and os.path.isfile(pickled_path):
+            self.load(pickled_path)
+            return
+
         if root_directory is not None:
             self.init(root_directory)
+
+        if pickled_path is not None:
+            self.dump(pickled_path)
+
+    def dump(self, filepath):
+        with open(filepath, "wb") as pickle_out:
+            pickle.dump(self.data_list, pickle_out)
+
+    def load(self, filepath):
+        with open(filepath, "rb") as pickle_in:
+            self.data_list = pickle.load(pickle_in)
 
     def init(self, root_directory):
         annotations_root = os.path.join(root_directory, 'Annotations')

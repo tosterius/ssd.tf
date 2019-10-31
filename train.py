@@ -57,8 +57,7 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
                 print(loss_batch)
                 precisions, mean = precision_metric.calc()
                 print(precisions)
-
-            precision_metric.calc()
+            precision_metric.reset()
 
             checkpoint_path = os.path.join(checkpoints_dir, 'checkpoint-epoch-%03d.ckpt' % epoch)
             print('Checkpoint "%s" was created' % checkpoint_path)
@@ -92,7 +91,7 @@ if __name__ == '__main__':
     checkpoints_dir = make_dir(os.path.join(args.dest_dir, args.experiment))
 
     # ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
-    ds = dataset.VocDataset('/data/Workspace/data/VOCdevkit/VOC2012')
+    ds = dataset.VocDataset('/data/Workspace/data/VOCdevkit/VOC2012', '/data/Workspace/data/VOCdevkit/vokdata.pkl')
     # ds = dataset.VocDataset('/home/arthur/Workspace/data/VOC2007')
 
     train_from_scratch(10, 0.0001, 2, ds, '/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt', checkpoints_dir)
