@@ -11,7 +11,7 @@ class Rect:
         self.x1, self.y1 = x1, y1
 
     def __repr__(self):
-        return "Rect({}, {}, {}, {})".format(self.x0, self.x1, self.y0, self.y1)
+        return "Rect({}, {}, {}, {})".format(self.x0, self.y0, self.x1, self.y1)
 
     def as_array(self, dtype=None):
         return np.array([self.x0, self.y0, self.x1, self.y1], dtype=dtype)
@@ -25,6 +25,7 @@ def norm_rect_to_rect(img_size: tuple, rect: NormRect):
     yc = rect.yc * img_size[1]
     w_half = rect.w * img_size[0] / 2
     h_half = rect.h * img_size[1] / 2
+    # TODO: OverflowError: cannot convert float infinity to integer
     return Rect(int(xc - w_half), int(yc - h_half), int(xc + w_half), int(yc + h_half))
 
 
@@ -110,7 +111,7 @@ def decode_location(det_rect: np.ndarray, default_box_rect: NormRect):
         default_box_rect.xc + det_rect[0] * default_box_rect.w,
         default_box_rect.yc + det_rect[1] * default_box_rect.h,
         default_box_rect.w * np.exp(det_rect[2]),
-        default_box_rect.h + np.exp(det_rect[3]),
+        default_box_rect.h * np.exp(det_rect[3]),
     )
 
 
@@ -190,7 +191,7 @@ class PrecisionMetric:
             rects = np.array(self.det_rects[gt_label], dtype=np.float32)
             n_rects = rects.shape[0]
             if n_rects == 0:
-                precisions[gt_label] = 0
+                precisions[gt_label] = 0.0
                 continue
 
             confs = np.array(self.det_confs[gt_label], dtype=np.float32)
