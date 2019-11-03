@@ -104,15 +104,14 @@ class SSD:
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool4', padding='SAME')
                 self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv5',
                                        weights_regularizer=vgg_weights_reg)
-
+                self.net = slim.max_pool2d(self.net, [3, 3], stride=1, scope='pool5', padding='SAME')
                 self.vgg_end_points = utils.convert_collection_to_dict(end_points_collection)
 
-    def __init_ssd_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.5):
+    def __init_ssd_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.5, reg_scale=0.001):
         with variable_scope.variable_scope(scope, 'ssd_300', [self.net]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
-            self.net = slim.max_pool2d(self.net, [3, 3], stride=1, scope='pool5', padding='SAME')
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection,
-                                weights_regularizer=slim.l2_regularizer(0.001)):
+                                weights_regularizer=slim.l2_regularizer(reg_scale)):
 
                 self.net = slim.conv2d(self.net, 1024, [3, 3], scope='conv6')
                 self.net = tf.layers.dropout(self.net, rate=dropout_keep_prob, training=is_training)
