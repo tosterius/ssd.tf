@@ -15,11 +15,20 @@ def make_dir(dir_path):
     return dir_path
 
 
+def initialize_variables(session):
+    init_tensors = [tf.is_variable_initialized(var) for var in tf.global_variables()]
+    init_flags = session.run(init_tensors)
+    flag_tensor_pairs = zip(init_flags, tf.global_variables())
+    flag_tensor_pairs = [var for init, var in flag_tensor_pairs if not init]
+    session.run(tf.variables_initializer(flag_tensor_pairs))
+
+
 def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, checkpoints_dir, log_dir='./', profile=SSD_300):
     tf.reset_default_graph()
     # graph = tf.get_default_graph()
 
-    precision_metric = utils.PrecisionMetric()
+    precision_metric_local = utils.PrecisionMetric()
+    precision_metric_global = utils.PrecisionMetric()
 
     with tf.Session() as session:
 
@@ -39,28 +48,33 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
         summary_writer = tf.summary.FileWriter(log_dir)
         saver = tf.train.Saver()
 
-        session.run(tf.global_variables_initializer())
+        initialize_variables(session)
 
         lg = dataset.LabelGenerator(profile, True)
         loader = dataset.ImageLoader(profile.imgsize)
         generator = lg.get(data_set, batch_size, loader)
         for epoch in range(n_epochs):
+            print('Epoch [{}/{}]'.format(epoch, n_epochs))
             for x, y, gt in generator:
                 feed = {net.input: x, net.gt: y}
                 result, loss_batch, _ = session.run([net.result, net.loss, net.optimizer], feed_dict=feed)
                 for i in range(result.shape[0]):
                     detections = utils.get_filtered_result_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
                     gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
-                    precision_metric.add(gt_objects, detections)
+                    precision_metric_local.add(gt_objects, detections)
+                    precision_metric_global.add(gt_objects, detections)
 
-                    # todo
-                print(loss_batch)
-                precisions, mean = precision_metric.calc()
-                print(precisions)
-            precision_metric.reset()
+                print("-Batch loss: ", loss_batch)
+                precisions, mean = precision_metric_local.calc()
+                print("-Local prec: ", mean, precisions)
+                precision_metric_local.reset()
+
+            precisions, mean = precision_metric_global.calc()
+            print("-Global prec: ", mean, precisions)
+            precision_metric_global.reset()
 
             checkpoint_path = os.path.join(checkpoints_dir, 'checkpoint-epoch-%03d.ckpt' % epoch)
-            print('Checkpoint "%s" was created' % checkpoint_path)
+            print('-Checkpoint "%s" was created' % checkpoint_path)
             # for var in saver._var_list:
             #     print(var)
 
@@ -68,7 +82,6 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
 
 
 def test(batch_size, data_set, log_dir='./', profile=SSD_300):
-
     pass
 
 
@@ -94,5 +107,5 @@ if __name__ == '__main__':
     ds = dataset.VocDataset('/data/Workspace/data/VOCdevkit/VOC2012', '/data/Workspace/data/VOCdevkit/vokdata.pkl')
     # ds = dataset.VocDataset('/home/arthur/Workspace/data/VOC2007')
 
-    train_from_scratch(10, 0.0001, 2, ds, '/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt', checkpoints_dir)
+    train_from_scratch(10, 0.00001, 32, ds, '/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt', checkpoints_dir)
     # train_from_scratch(10, 0.0001, 2, ds, '/home/arthur/Workspace/projects/github/ssd.tf/vgg_16.ckpt', checkpoints_dir)

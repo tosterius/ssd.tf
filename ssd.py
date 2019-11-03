@@ -7,13 +7,13 @@ from tensorflow.contrib.framework import get_variables_to_restore
 
 def conv_with_l2_reg(tensor, depth, layer_hw, name):
     with tf.variable_scope(name):
-        w = tf.get_variable("filter", shape=[3, 3, tensor.get_shape()[3], depth],
+        weights = tf.get_variable("filter", shape=[3, 3, tensor.get_shape()[3], depth],
                             initializer=tf.contrib.layers.xavier_initializer())
-        b = tf.Variable(tf.zeros(depth), name='biases')
-        x = tf.nn.conv2d(tensor, w, strides=[1, 1, 1, 1], padding='SAME')
-        x = tf.nn.bias_add(x, b)
+        bias = tf.Variable(tf.zeros(depth), name='biases')
+        x = tf.nn.conv2d(tensor, weights, strides=[1, 1, 1, 1], padding='SAME')
+        x = tf.nn.bias_add(x, bias)
         x = tf.reshape(x, [-1, layer_hw[0] * layer_hw[1], depth])
-        l2_norm = tf.nn.l2_loss(w)
+        l2_norm = tf.nn.l2_loss(weights)
     return x, l2_norm
 
 
@@ -83,8 +83,8 @@ class SSD:
         self.loss = self.session.graph.get_tensor_by_name('total_loss/loss:0')
         self.confidence_loss = self.session.graph.get_tensor_by_name('confidence_loss/confidence_loss:0')
         self.localization_loss = self.session.graph.get_tensor_by_name('localization_loss/localization_loss:0')
-    
-    def __init_vgg_16_part(self, scope='vgg_16', reg_scale=0.0):
+
+    def __init_vgg_16_part(self, scope='vgg_16', reg_scale=0.0005):
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
@@ -107,13 +107,12 @@ class SSD:
                 self.net = slim.max_pool2d(self.net, [3, 3], stride=1, scope='pool5', padding='SAME')
                 self.vgg_end_points = utils.convert_collection_to_dict(end_points_collection)
 
-    def __init_ssd_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.5, reg_scale=0.001):
+    def __init_ssd_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.5, reg_scale=0.0005):
         with variable_scope.variable_scope(scope, 'ssd_300', [self.net]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection,
                                 weights_regularizer=slim.l2_regularizer(reg_scale)):
-
-                self.net = slim.conv2d(self.net, 1024, [3, 3], scope='conv6')
+                self.net = slim.conv2d(self.net, 1024, [3, 3], scope='conv6') # rate=6
                 self.net = tf.layers.dropout(self.net, rate=dropout_keep_prob, training=is_training)
                 self.net = slim.conv2d(self.net, 1024, [1, 1], scope='conv7')
                 self.net = tf.layers.dropout(self.net, rate=dropout_keep_prob, training=is_training)
@@ -150,7 +149,7 @@ class SSD:
             self.detections = output[:, :, self.n_classes:]
             self.result = tf.concat([self.classifier, self.detections], axis=-1, name='result')
 
-    def init_loss_and_optimizer(self, lr, momentum=0.9, global_step=None, decay=0.0005):
+    def init_loss_and_optimizer(self, lr, momentum=0.9, global_step=None, decay=0.005):
         self.gt = tf.placeholder(tf.float32, name='labels', shape=[None, None, self.label_dim])
 
         batch_size = tf.shape(self.gt)[0]
