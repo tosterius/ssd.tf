@@ -84,20 +84,26 @@ class SSD:
         self.confidence_loss = self.session.graph.get_tensor_by_name('confidence_loss/confidence_loss:0')
         self.localization_loss = self.session.graph.get_tensor_by_name('localization_loss/localization_loss:0')
     
-    def __init_vgg_16_part(self, scope='vgg_16'):
+    def __init_vgg_16_part(self, scope='vgg_16', reg_scale=0.0):
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
-                self.net = slim.repeat(self.input, 2, slim.conv2d, 64, [3, 3], scope='conv1')
+                vgg_weights_reg = slim.l2_regularizer(reg_scale)
+                self.net = slim.repeat(self.input, 2, slim.conv2d, 64, [3, 3], scope='conv1',
+                                       weights_regularizer=vgg_weights_reg)
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool1')  # 150x150
-                self.net = slim.repeat(self.net, 2, slim.conv2d, 128, [3, 3], scope='conv2')
+                self.net = slim.repeat(self.net, 2, slim.conv2d, 128, [3, 3], scope='conv2',
+                                       weights_regularizer=vgg_weights_reg)
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool2')  # 75x75
-                self.net = slim.repeat(self.net, 3, slim.conv2d, 256, [3, 3], scope='conv3')
+                self.net = slim.repeat(self.net, 3, slim.conv2d, 256, [3, 3], scope='conv3',
+                                       weights_regularizer=vgg_weights_reg)
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool3', padding='SAME')  # 38x38
-                self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv4')
+                self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv4',
+                                       weights_regularizer=vgg_weights_reg)
                 self.feature_maps.append(self.net)
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool4', padding='SAME')
-                self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv5')
+                self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv5',
+                                       weights_regularizer=vgg_weights_reg)
 
                 self.vgg_end_points = utils.convert_collection_to_dict(end_points_collection)
 
@@ -108,7 +114,7 @@ class SSD:
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection,
                                 weights_regularizer=slim.l2_regularizer(0.001)):
 
-                self.net = slim.conv2d(self.net, 1024, [3, 3], rate=6, scope='conv6')
+                self.net = slim.conv2d(self.net, 1024, [3, 3], scope='conv6')
                 self.net = tf.layers.dropout(self.net, rate=dropout_keep_prob, training=is_training)
                 self.net = slim.conv2d(self.net, 1024, [1, 1], scope='conv7')
                 self.net = tf.layers.dropout(self.net, rate=dropout_keep_prob, training=is_training)
@@ -145,7 +151,7 @@ class SSD:
             self.detections = output[:, :, self.n_classes:]
             self.result = tf.concat([self.classifier, self.detections], axis=-1, name='result')
 
-    def init_loss_and_optimizer(self, lr, momentum=0.9, global_step=None, decay=0.0001):
+    def init_loss_and_optimizer(self, lr, momentum=0.9, global_step=None, decay=0.0005):
         self.gt = tf.placeholder(tf.float32, name='labels', shape=[None, None, self.label_dim])
 
         batch_size = tf.shape(self.gt)[0]
@@ -209,9 +215,9 @@ class SSD:
         with tf.variable_scope('total_loss'):
             reg_w = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             l2_det_loss = tf.multiply(decay, self.l2_norm, name='l2_loss')
-            self.l2_loss = l2_det_loss + tf.reduce_sum(reg_w)
-            self.loss = tf.add(self.localization_loss, self.confidence_loss, name='loc_conf_loss')
-            self.loss = tf.add(self.loss, self.l2_loss, name='loss')
+            l2_loss = l2_det_loss + tf.reduce_sum(reg_w)
+            loss = tf.add(self.localization_loss, self.confidence_loss, name='loc_conf_loss')
+            self.loss = tf.add(loss, l2_loss, name='loss')
 
         with tf.variable_scope('optimizer'):
             self.optimizer = tf.train.MomentumOptimizer(lr, momentum)
