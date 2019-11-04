@@ -221,8 +221,7 @@ class ImageAugmentator:
 
 
 class LabelGenerator:
-    def __init__(self, profile, infinity=True):
-        self.infinity = infinity
+    def __init__(self, profile):
         self.overlap_thresh = 0.5
         self.img_size = profile.imgsize
         self.default_boxes_rel = get_prior_boxes(profile)
@@ -230,29 +229,27 @@ class LabelGenerator:
         self.n_prior_boxes = len(self.default_boxes_rel)
 
     def get(self, dataset, batch_size, preprocessor):
-        n_classes = len(dataset.label_names)
-        while True:
-            shuffle(dataset.data_list)
+        def generator(ds, batch_size, preprocessor):
+            shuffle(ds.data_list)
+            n_classes = len(ds.label_names)
             data, labels, gt = [], [], []
-            while len(data) < batch_size:
-                for labeled_file in dataset.data_list:
-                    labeled_image = preprocessor(labeled_file)
-                    label = self.__process_labeled_file(labeled_image, n_classes)
+            n = len(ds.data_list)
+            for i, labeled_file in enumerate(ds.data_list):
+                labeled_image = preprocessor(labeled_file)
+                label = self.__process_labeled_file(labeled_image, n_classes)
+                n_no_object = np.count_nonzero(label[:, n_classes - 1])
+                if n_no_object < label.shape[0]:
+                    data.append(labeled_image.data)
+                    labels.append(label)
+                    gt.append(labeled_image.objects)
+                if len(data) >= batch_size or i == n - 1 and len(data) > 0:
+                    data_arr = np.array(data, dtype=np.float32)
+                    labels_arr = np.array(labels, dtype=np.float32)
+                    gt_ret = gt[:]
+                    data, labels, gt = [], [], []
+                    yield data_arr, labels_arr, gt_ret
 
-                    n_no_object = np.count_nonzero(label[:, n_classes - 1])
-                    if n_no_object < label.shape[0]:
-                        data.append(labeled_image.data)
-                        labels.append(label)
-                        gt.append(labeled_image.objects)
-                    if len(data) >= batch_size:
-                        break
-
-            data = np.array(data, dtype=np.float32)
-            labels = np.array(labels, dtype=np.float32)
-            yield data, labels, gt
-
-            if self.infinity is not True:
-                break
+        return generator(dataset, batch_size, preprocessor)
 
     def __process_labeled_file(self, labeled_file, n_classes):
         label_dim = n_classes + 4
@@ -278,7 +275,7 @@ class LabelGenerator:
 if __name__ == '__main__':
 
     ds = VocDataset('/data/Workspace/data/VOCDebug')
-    lg = LabelGenerator(SSD_300, True)
+    lg = LabelGenerator(SSD_300)
     loader = ImageLoader(SSD_300.imgsize)
     generator = lg.get(ds, 8, loader)
     for item in generator:
