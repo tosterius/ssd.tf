@@ -22,12 +22,14 @@ def lo_to_abs_rects(img_size, list_of_lo):
     return ret
 
 
-class LabeledImage:
-    def __init__(self, filepath, size, objects, data=None):
+class LabeledImageFile:
+    def __init__(self, filepath, size, objects):
         self.filepath = filepath
         self.size = size
         self.objects = objects
-        self.data = data
+
+
+LabeledImage = namedtuple('LabeledImage', ['data', 'objects'])
 
 
 def get_prior_boxes(profile):
@@ -180,7 +182,7 @@ class VocDataset(Dataset):
         img_w = int(size.find('width').text)
         img_h = int(size.find('height').text)
 
-        labeled_file = LabeledImage(filepath, (img_h, img_w), [])
+        labeled_file = LabeledImageFile(filepath, (img_h, img_w), [])
         for o in root.iter('object'):
             label = self.label_map[o.find('name').text]
             bbox = o.find('bndbox')
@@ -204,8 +206,9 @@ class ImageLoader:
 
     def __call__(self, labeled_file):
         img_raw = cv2.imread(labeled_file.filepath, cv2.IMREAD_COLOR)
-        labeled_file.data = cv2.resize(img_raw, self.img_size)
-        return labeled_file
+        data = cv2.resize(img_raw, self.img_size).astype(np.float)
+        objects = labeled_file.objects
+        return LabeledImage(data, objects)
 
 
 class ImageAugmentator:
