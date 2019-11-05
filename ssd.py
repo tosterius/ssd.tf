@@ -107,7 +107,7 @@ class SSD:
                 self.net = slim.max_pool2d(self.net, [3, 3], stride=1, scope='pool5', padding='SAME')
                 self.vgg_end_points = utils.convert_collection_to_dict(end_points_collection)
 
-    def __init_ssd_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.5, reg_scale=0.0005):
+    def __init_ssd_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.5, reg_scale=0.005):
         with variable_scope.variable_scope(scope, 'ssd_300', [self.net]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection,
@@ -143,7 +143,7 @@ class SSD:
 
         with tf.variable_scope('output'):
             output = tf.concat(output, axis=1, name='output')
-            self.n_anchors = tf.shape(output, out_type=tf.int64)[0]
+            self.n_anchors = tf.shape(output, out_type=tf.int64)[1]
             self.logits = output[:, :, :self.n_classes]
             self.classifier = tf.nn.softmax(self.logits)
             self.detections = output[:, :, self.n_classes:]
@@ -162,7 +162,9 @@ class SSD:
             n_total = tf.ones([batch_size], dtype=tf.int64) * self.n_anchors
             n_negative = tf.count_nonzero(gt_labels[:, :, -1], axis=1)
             n_positive = n_total - n_negative
-
+            n_positives_div_safe = tf.where(tf.equal(n_positive, 0),
+                                            tf.ones([batch_size]) * 10e-12,
+                                            tf.to_float(n_positive))
         with tf.variable_scope('masks'):
             positives_mask = tf.equal(gt_labels[:, :, -1], 0)
             negatives_mask = tf.not_equal(gt_labels[:, :, -1], 0)
@@ -171,7 +173,6 @@ class SSD:
             ce = tf.nn.softmax_cross_entropy_with_logits_v2(gt_labels, self.logits)
             positive_losses = tf.where(positives_mask, ce, tf.zeros_like(ce))
             positive_total_loss = tf.reduce_sum(positive_losses, axis=-1)
-
             negative_losses = tf.where(negatives_mask, ce, tf.zeros_like(ce))
             negative_top_k = tf.nn.top_k(negative_losses, tf.cast(self.n_anchors, dtype=tf.int32))[0]
 
@@ -192,7 +193,7 @@ class SSD:
 
             confidence_loss = tf.where(tf.equal(n_positive, 0),
                                        tf.zeros([batch_size]),
-                                       tf.div_no_nan(confidence_loss, tf.cast(n_positive, dtype=tf.float32)))
+                                       tf.div(confidence_loss, n_positives_div_safe))
 
             self.confidence_loss = tf.reduce_mean(confidence_loss, name='confidence_loss')
 
@@ -206,7 +207,7 @@ class SSD:
             localization_loss = tf.reduce_sum(positive_localisation_loss_for_anchor, axis=-1)
             localization_loss = tf.where(tf.equal(n_positive, 0),
                                          tf.zeros([batch_size]),
-                                         tf.div_no_nan(localization_loss, tf.cast(n_positive, dtype=tf.float32)))
+                                         tf.div(localization_loss, n_positives_div_safe))
 
             self.localization_loss = tf.reduce_mean(localization_loss, name='localization_loss')
 
