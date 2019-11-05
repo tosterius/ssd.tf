@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow.python.ops import variable_scope
@@ -15,6 +16,15 @@ def conv_with_l2_reg(tensor, depth, layer_hw, name):
         x = tf.reshape(x, [-1, layer_hw[0] * layer_hw[1], depth])
         l2_norm = tf.nn.l2_loss(weights)
     return x, l2_norm
+
+
+def l2_normalization(x, initial_scale, channels, name):
+    with tf.variable_scope(name):
+        c = initial_scale*np.ones(channels)
+        init = tf.constant_initializer(value=c, dtype=tf.float32)
+        scale = tf.get_variable(name='scale', initializer=init, shape=c.shape)
+        ret = scale*tf.nn.l2_normalize(x, axis=-1)
+    return ret
 
 
 def smooth_l1_loss(x):
@@ -57,12 +67,8 @@ class SSD:
             self.input = tf.placeholder(tf.float32, shape, name='image_input')
 
         self.__init_vgg_16_part()
-        exclude_layers = ['vgg_16/fc6',
-                          'vgg_16/dropout6',
-                          'vgg_16/fc7',
-                          'vgg_16/dropout7',
-                          'vgg_16/fc8']
 
+        exclude_layers = ['vgg_16/fc8']
         saver = tf.train.Saver(get_variables_to_restore(exclude=exclude_layers))
         saver.restore(self.session, vgg_ckpt_path)
 
@@ -84,7 +90,7 @@ class SSD:
         self.confidence_loss = self.session.graph.get_tensor_by_name('confidence_loss/confidence_loss:0')
         self.localization_loss = self.session.graph.get_tensor_by_name('localization_loss/localization_loss:0')
 
-    def __init_vgg_16_part(self, scope='vgg_16', reg_scale=0.0005):
+    def __init_vgg_16_part(self, scope='vgg_16', is_training=True, dropout_keep_prob=0.5, reg_scale=0.005):
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
@@ -105,18 +111,39 @@ class SSD:
                 self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv5',
                                        weights_regularizer=vgg_weights_reg)
                 self.net = slim.max_pool2d(self.net, [3, 3], stride=1, scope='pool5', padding='SAME')
+
+                self.net_fc = slim.conv2d(self.net, 4096, [7, 7], padding='VALID', scope='fc6')
+                self.net_fc = slim.dropout(self.net_fc, dropout_keep_prob, is_training=is_training, scope='dropout6')
+                slim.conv2d(self.net_fc, 4096, [1, 1], scope='fc7')
+
                 self.vgg_end_points = utils.convert_collection_to_dict(end_points_collection)
 
-    def __init_ssd_part(self, scope='ssd_300', is_training=True, dropout_keep_prob=0.5, reg_scale=0.005):
+    def __build_vgg_mods(self, scope='ssd_300'):
+        """https://arxiv.org/pdf/1512.02325.pdf page 7 item 3"""
+        with tf.variable_scope('vgg_16', reuse=True):
+            self.vgg_fc6_w = tf.get_variable('fc6/weights')
+            self.vgg_fc6_b = tf.get_variable('fc6/biases')
+            self.vgg_fc7_w = tf.get_variable('fc7/weights')
+            self.vgg_fc7_b = tf.get_variable('fc7/biases')
+
+        with tf.variable_scope(scope):
+            with tf.variable_scope('conv6'):
+                self.net = tf.nn.conv2d(self.net, self.vgg_fc6_w, strides=[1, 1, 1, 1], padding='SAME')
+                self.net = tf.nn.bias_add(self.net, self.vgg_fc6_b)
+                self.net = tf.nn.relu(self.net)
+            with tf.variable_scope('conv7'):
+                self.net = tf.nn.conv2d(self.net, self.vgg_fc7_w, strides=[1, 1, 1, 1], padding='SAME')
+                self.net = tf.nn.bias_add(self.net, self.vgg_fc7_b)
+                self.net = tf.nn.relu(self.net)
+                self.feature_maps.append(self.net)
+        # TODO l2 norm?
+
+    def __init_ssd_part(self, scope='ssd_300', reg_scale=0.005):
+        self.__build_vgg_mods()
         with variable_scope.variable_scope(scope, 'ssd_300', [self.net]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection,
                                 weights_regularizer=slim.l2_regularizer(reg_scale)):
-                self.net = slim.conv2d(self.net, 1024, [3, 3], scope='conv6') # rate=6
-                self.net = tf.layers.dropout(self.net, rate=dropout_keep_prob, training=is_training)
-                self.net = slim.conv2d(self.net, 1024, [1, 1], scope='conv7')
-                self.net = tf.layers.dropout(self.net, rate=dropout_keep_prob, training=is_training)
-                self.feature_maps.append(self.net)
                 self.net = slim.conv2d(self.net, 256, [1, 1], scope='conv8_1')
                 self.net = slim.conv2d(self.net, 512, [3, 3], stride=2, scope='conv8_2')
                 self.feature_maps.append(self.net)
@@ -132,6 +159,12 @@ class SSD:
                 self.ssd_end_points = utils.convert_collection_to_dict(end_points_collection)
 
     def __init_detection_layers(self):
+        # https://arxiv.org/pdf/1512.02325.pdf page 7 item 3.1:
+        # "Since, as pointed out in [12], conv4 3 has a different feature
+        # scale compared to the other layers, we use the L2 normalization technique introduced
+        # in [12] to scale the feature norm at each location"
+        self.feature_maps[0] = l2_normalization(self.feature_maps[0], 20, 512, 'l2_norm_conv4_3')
+
         output = []
         with tf.variable_scope('classifiers'):
             for i, feature_map in enumerate(self.feature_maps):
