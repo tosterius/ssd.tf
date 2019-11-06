@@ -6,69 +6,28 @@ import xml.etree.ElementTree as ET
 from collections import namedtuple
 from random import shuffle
 from profiles import SSD_300
+import utils
 
-from utils import NormRect, norm_rect_to_rect, calc_jaccard_overlap, encode_location
-
-DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
 
 LabeledObject = namedtuple('LabeledObject', ['rect', 'label'])
 
-
-def lo_to_abs_rects(img_size, list_of_lo):
-    ret = []
-    for lo in list_of_lo:
-        rect = norm_rect_to_rect(img_size, lo.rect)
-        ret.append([rect, lo.label])
-    return ret
-
-
-class LabeledImageFile:
-    def __init__(self, filepath, size, objects):
-        self.filepath = filepath
-        self.size = size
-        self.objects = objects
-
+LabeledImageFile = namedtuple('LabeledImageFile', ['filepath', 'size', 'objects'])
 
 LabeledImage = namedtuple('LabeledImage', ['data', 'objects'])
 
 
-def get_prior_boxes(profile):
+def lo_to_abs_rects(img_size, list_of_lo):
     """
-    Get sizes of default bounding boxes for all scales.
-    See https://arxiv.org/pdf/1512.02325.pdf page 6
-    :param profile:
+    Converts list of LabeledObjects to Rects with scaling
+    :param img_size:
+    :param list_of_lo:
     :return:
     """
-    n_maps = len(profile.maps)
-    box_sizes = []
-    for i in range(n_maps):
-        scale = profile.maps[i].scale
-        aspect_ratios = profile.maps[i].ratios
-        sizes_for_aspects = []
-        for acpect_ratio in aspect_ratios:
-            sqrt_ar = np.sqrt(acpect_ratio)
-            w = scale * sqrt_ar
-            h = scale / sqrt_ar
-            sizes_for_aspects.append((w, h))
-
-        # additional default box for the aspect ratio of 1:
-        add_scale_one = profile.maps[i + 1].scale if i < n_maps - 1 else profile.max_scale
-        s_prime = np.sqrt(scale * add_scale_one)
-        sizes_for_aspects.append((s_prime, s_prime))
-        box_sizes.append(sizes_for_aspects)
-
-    default_boxes = []
-    for k in range(n_maps):
-        # f_k is the size of the k-th feature map
-        f_k = profile.maps[k].size[0]
-        s = profile.maps[k].scale
-        for (w, h) in box_sizes[k]:
-            for j in range(f_k):
-                yc = (j + 0.5) / f_k
-                for i in range(f_k):
-                    xc = (i + 0.5) / f_k
-                    default_boxes.append(DefaultBox(NormRect(xc, yc, w, h), i, j, s, k))
-    return default_boxes
+    ret = []
+    for lo in list_of_lo:
+        rect = utils.norm_rect_to_rect(img_size, lo.rect)
+        ret.append([rect, lo.label])
+    return ret
 
 
 def default_boxes_to_array(default_boxes, img_size):
@@ -76,14 +35,14 @@ def default_boxes_to_array(default_boxes, img_size):
     for i, box in enumerate(default_boxes):
         # the rect absolute coordinates might be out of img_size
         # it does not matter because we need to compute overlap with gt boxes
-        rect = norm_rect_to_rect(img_size, box.rect)
+        rect = utils.norm_rect_to_rect(img_size, box.rect)
         # [x0 y0 x1 y1]
         arr[i] = rect.as_array()
     return arr
 
 
 def calc_overlap(box_as_array, prior_boxes, threshold=0.5):
-    overlaps = calc_jaccard_overlap(box_as_array, prior_boxes)
+    overlaps = utils.calc_jaccard_overlap(box_as_array, prior_boxes)
     flags = overlaps > threshold
     nonzero_idxs = np.nonzero(flags)[0]
     return [(i, overlaps[i]) for i in nonzero_idxs]
@@ -195,7 +154,7 @@ class VocDataset(Dataset):
             w = float(xmax - xmin) / img_w
             h = float(ymax - ymin) / img_h
 
-            labeled_file.objects.append(LabeledObject(label=label, rect=NormRect(xc, yc, w, h)))
+            labeled_file.objects.append(LabeledObject(label=label, rect=utils.NormRect(xc, yc, w, h)))
 
         self.data_list.append(labeled_file)
 
@@ -224,7 +183,7 @@ class LabelGenerator:
     def __init__(self, profile):
         self.overlap_thresh = 0.5
         self.img_size = profile.imgsize
-        self.default_boxes_rel = get_prior_boxes(profile)
+        self.default_boxes_rel = utils.get_prior_boxes(profile)
         self.default_boxes_abs = default_boxes_to_array(self.default_boxes_rel, self.img_size)
         self.n_prior_boxes = len(self.default_boxes_rel)
 
@@ -258,7 +217,7 @@ class LabelGenerator:
 
         tmp_map = {}
         for labeled_object in labeled_file.objects:
-            rect = norm_rect_to_rect(self.img_size, labeled_object.rect)  # debug
+            rect = utils.norm_rect_to_rect(self.img_size, labeled_object.rect)  # debug
             overlaps = calc_overlap(rect.as_array(), self.default_boxes_abs, self.overlap_thresh)
 
             for id, score in overlaps:
@@ -267,7 +226,7 @@ class LabelGenerator:
                 tmp_map[id] = score
                 label[id, :n_classes] = 0.0
                 label[id, labeled_object.label] = 1.0
-                label[id, n_classes:] = encode_location(labeled_object.rect, self.default_boxes_rel[id].rect)
+                label[id, n_classes:] = utils.encode_location(labeled_object.rect, self.default_boxes_rel[id].rect)
 
         return label
 

@@ -17,14 +17,16 @@ class Rect:
         return np.array([self.x0, self.y0, self.x1, self.y1], dtype=dtype)
 
 
+DefaultBox = namedtuple('DefaultBox', ['rect', 'fm_x', 'fm_y', 'scale', 'fm'])
+
 DetectedObject = namedtuple('DetectedObject', ['rect', 'label', 'score'])
 
 
 def norm_rect_to_rect(img_size: tuple, rect: NormRect):
     xc = rect.xc * img_size[0]
     yc = rect.yc * img_size[1]
-    w_half = rect.w * img_size[0] / 2
-    h_half = rect.h * img_size[1] / 2
+    w_half = rect.w * img_size[0] / 2.0
+    h_half = rect.h * img_size[1] / 2.0
     # TODO: OverflowError: cannot convert float infinity to integer
     return Rect(int(xc - w_half), int(yc - h_half), int(xc + w_half), int(yc + h_half))
 
@@ -37,9 +39,47 @@ def rect_to_norm_rect(img_size: tuple, rect: Rect):
     return NormRect(xc, yc, w, h)
 
 
+def get_prior_boxes(profile):
+    """
+    Get sizes of default bounding boxes for all scales.
+    See https://arxiv.org/pdf/1512.02325.pdf page 6
+    :param profile:
+    :return:
+    """
+    n_maps = len(profile.maps)
+    box_sizes = []
+    for i in range(n_maps):
+        scale = profile.maps[i].scale
+        aspect_ratios = profile.maps[i].ratios
+        sizes_for_aspects = []
+        for acpect_ratio in aspect_ratios:
+            sqrt_ar = np.sqrt(acpect_ratio)
+            w = scale * sqrt_ar
+            h = scale / sqrt_ar
+            sizes_for_aspects.append((w, h))
+
+        # additional default box for the aspect ratio of 1:
+        add_scale_one = profile.maps[i + 1].scale if i < n_maps - 1 else profile.max_scale
+        s_prime = np.sqrt(scale * add_scale_one)
+        sizes_for_aspects.append((s_prime, s_prime))
+        box_sizes.append(sizes_for_aspects)
+
+    default_boxes = []
+    for k in range(n_maps):
+        # f_k is the size of the k-th feature map
+        f_k = profile.maps[k].size[0]
+        s = profile.maps[k].scale
+        for (w, h) in box_sizes[k]:
+            for j in range(f_k):
+                yc = (j + 0.5) / f_k
+                for i in range(f_k):
+                    xc = (i + 0.5) / f_k
+                    default_boxes.append(DefaultBox(NormRect(xc, yc, w, h), i, j, s, k))
+    return default_boxes
+
+
 def nms(detections, threshold):
     """
-
     :param detections: [[label, score, norm_rects], ..]
     :param threshold: float < 1.0
     :return:
@@ -131,7 +171,7 @@ def net_predictions_to_bboxes(predictions, default_boxes, confidence_thresh):
 
 
 def get_filtered_result_bboxes(results, default_boxes, img_size,
-                               confidence_thresh=0.1, overlap_thresh=0.5, number_thresh=100):
+                               confidence_thresh=0.02, overlap_thresh=0.5, number_thresh=100):
     result = []
     decoded_detections = net_predictions_to_bboxes(results, default_boxes, confidence_thresh)[:number_thresh]
     grouped_by_label_detections = {}
