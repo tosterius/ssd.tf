@@ -23,9 +23,36 @@ def initialize_variables(session):
     session.run(tf.variables_initializer(flag_tensor_pairs))
 
 
+class Summary:
+    def __init__(self, session, writer, name, item_names):
+        self.session = session
+        self.writer = writer
+        self.item_names = item_names
+        self.placeholders = {}
+        self.summary_ops = {}
+        for item_name in self.item_names:
+            item_name = str(item_name)
+            summary_name = name + '_' + item_name
+            ph = tf.placeholder(tf.float32, name=summary_name + '_ph')
+            self.placeholders[item_name] = ph
+            self.summary_ops[item_name] = tf.summary.scalar(summary_name, ph)
+
+    def append(self, epoch, item_value_dict):
+        feed = {}
+        tensors = []
+        for item, value in item_value_dict.items():
+            item_name = str(item)
+            ph = self.placeholders[item_name]
+            feed[ph] = value
+            tensors.append(self.summary_ops[item_name])
+
+        summaries = self.session.run(tensors, feed_dict=feed)
+        for summary in summaries:
+            self.writer.add_summary(summary, epoch)
+
+
 def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, checkpoints_dir, log_dir='./', profile=SSD_300):
     tf.reset_default_graph()
-    # graph = tf.get_default_graph()
 
     precision_metric_local = utils.PrecisionMetric()
     precision_metric_global = utils.PrecisionMetric()
@@ -46,6 +73,7 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
         net.init_loss_and_optimizer(lr, global_step=global_step)
 
         summary_writer = tf.summary.FileWriter(log_dir)
+        # sum_prec = Summary(session, summary_writer, 'train_precision', )
         saver = tf.train.Saver()
 
         initialize_variables(session)
@@ -117,5 +145,5 @@ if __name__ == '__main__':
     ds = dataset.VocDataset('/data/Workspace/data/VOCdevkit/VOC2012', '/data/Workspace/data/VOCdevkit/vokdata.pkl')
     # ds = dataset.VocDataset('/home/arthur/Workspace/data/VOC2007')
 
-    train_from_scratch(10, 0.00001, 32, ds, '/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt', checkpoints_dir)
+    train_from_scratch(50, 0.0001, 20, ds, '/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt', checkpoints_dir)
     # train_from_scratch(10, 0.0001, 2, ds, '/home/arthur/Workspace/projects/github/ssd.tf/vgg_16.ckpt', checkpoints_dir)
