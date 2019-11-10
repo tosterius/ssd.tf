@@ -74,7 +74,9 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, checkpoint_path,
         net.init_loss_and_optimizer(lr, global_step=global_step)
 
         summary_writer = tf.summary.FileWriter(log_dir)
-        # sum_prec = Summary(session, summary_writer, 'train_precision', )
+        precision_summary = Summary(session, summary_writer, 'train_precision', data_set.label_names)
+        loss_summary = Summary(session, summary_writer, 'train_loss', ['loss', 'confidence_loss', 'localization_loss'])
+
         saver = tf.train.Saver()
 
         initialize_variables(session)
@@ -109,8 +111,11 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, checkpoint_path,
                 batch_counter += 1
 
             precisions, mean = precision_metric_global.calc()
+            precisions = ds.decode_dict(precisions)
             print("-Global prec: ", mean, precisions)
             precision_metric_global.reset()
+            precision_summary.append(epoch, precisions)
+            summary_writer.flush()
 
             checkpoint_path = os.path.join(checkpoints_dir, 'checkpoint-epoch-%03d.ckpt' % epoch)
             print('-Checkpoint "%s" was created' % checkpoint_path)

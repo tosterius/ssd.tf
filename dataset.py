@@ -107,7 +107,7 @@ class Dataset(object):
             self.data_list = pickle.load(pickle_in)
 
     def decode_dict(self, d):
-        return {(self.label_names[k], v) for k, v in d.items()}
+        return {self.label_names[k]: v for k, v in d.items()}
 
     def init_label_dicts(self):
         raise NotImplementedError("This is label list initialization point")
