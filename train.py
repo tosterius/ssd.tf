@@ -51,7 +51,8 @@ class Summary:
             self.writer.add_summary(summary, epoch)
 
 
-def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, checkpoints_dir, log_dir='./', profile=SSD_300):
+def train_from_scratch(n_epochs, lr, batch_size, data_set, checkpoint_path,
+                       checkpoints_dir, log_dir='./', profile=SSD_300, continue_training=False):
     tf.reset_default_graph()
 
     precision_metric_local = utils.PrecisionMetric()
@@ -61,13 +62,13 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, vgg_checkpoint_path, 
 
         net = ssd.SSD(session, profile, len(data_set.label_names))
 
-        # net.load_metagraph('./checkpoints/ssd/checkpoint-epoch-000.ckpt.meta',
-        #                    './checkpoints/ssd')
+        if continue_training:
+            net.load_metagraph('./checkpoints/ssd/checkpoint-epoch-000.ckpt.meta', './checkpoints/ssd')
+        else:
+            net.build_with_vgg(checkpoint_path)
 
         # for op in graph.get_operations():
         #     print(op.name)
-
-        net.build_with_vgg(vgg_checkpoint_path)
 
         global_step = tf.Variable(0, trainable=False)
         net.init_loss_and_optimizer(lr, global_step=global_step)
@@ -125,25 +126,37 @@ def test(batch_size, data_set, log_dir='./', profile=SSD_300):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data-dir', default='/data/Workspace/data/VOCDebug', help='data directory')
+    parser.add_argument('--data-dir', default='/data/Workspace/data/VOCdevkit/VOC2012', help='data directory')
     parser.add_argument('--data-parser', default='pascal-voc', help='data parser name')     # TODO:
     parser.add_argument('--dest-dir', default='checkpoints', help='output directory')
     parser.add_argument('--experiment', default='ssd', help='experiment name')
     parser.add_argument('--log-dir', default="tb", help='log directory')
-    parser.add_argument('--vgg-checkpoint', default='vgg_graph', help='path to pretrained VGG16 model(checkpoint file)')
-    parser.add_argument('--n-epochs', type=int, default=100, help='number of epochs')
-    parser.add_argument('--batch-size', type=int, default=8, help='batch size')
-    parser.add_argument('--lr', type=str, default='0.0001', help='learning rate')
+    parser.add_argument('--checkpoint', default='/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt',
+                        help='path to pretrained VGG16 model(checkpoint file)')
+    parser.add_argument('--continue', type=bool, action='store_true', default=False)
+    parser.add_argument('--n-epochs', type=int, default=50, help='number of epochs')
+    parser.add_argument('--batch-size', type=int, default=20, help='batch size')
+    parser.add_argument('--lr', type=int, default=0.0001, help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.9, help='momentum for the optimizer')
     parser.add_argument('--weight-decay', type=float, default=0.001, help='L2 normalization factor')
 
     args = parser.parse_args()
 
     checkpoints_dir = make_dir(os.path.join(args.dest_dir, args.experiment))
+    data_dir = args.data_dir
+    log_dir = args.log_dir
+    experiment_name = args.experiment
+    checkpoint = args.checkpoint
+    n_epochs = args.n_epochs
+    batch_size = args.batch_size
+    lr = args.lr
+    momentum = args.momentum
+    weight_decay = args.weight_decay
+
 
     # ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
     ds = dataset.VocDataset('/data/Workspace/data/VOCdevkit/VOC2012', '/data/Workspace/data/VOCdevkit/vokdata.pkl')
     # ds = dataset.VocDataset('/home/arthur/Workspace/data/VOC2007')
 
-    train_from_scratch(50, 0.0001, 20, ds, '/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt', checkpoints_dir)
+    train_from_scratch(n_epochs, lr, batch_size, ds, checkpoint, checkpoints_dir)
     # train_from_scratch(10, 0.0001, 2, ds, '/home/arthur/Workspace/projects/github/ssd.tf/vgg_16.ckpt', checkpoints_dir)
