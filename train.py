@@ -133,7 +133,7 @@ if __name__ == '__main__':
     parser.add_argument('--log-dir', default="tb", help='log directory')
     parser.add_argument('--checkpoint', default='/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt',
                         help='path to pretrained VGG16 model(checkpoint file)')
-    parser.add_argument('--continue', type=bool, action='store_true', default=False)
+    parser.add_argument('--continue', action='store_true', default=False)
     parser.add_argument('--n-epochs', type=int, default=50, help='number of epochs')
     parser.add_argument('--batch-size', type=int, default=20, help='batch size')
     parser.add_argument('--lr', type=int, default=0.0001, help='learning rate')

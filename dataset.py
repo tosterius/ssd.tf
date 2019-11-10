@@ -81,16 +81,46 @@ def split(data_list, fractions=[0.99, 0.01]):
 
 
 class Dataset(object):
-    def __init__(self):
+    def __init__(self, root_directory, pickled_path=None):
         self.data_list = []  # list of objects of type LabeledImage
         self.label_names = {}  # label list [idx] -> name
         self.label_map = {}  # label map  [name] -> idx
 
+        self.init_label_dicts()
+
+        if pickled_path is not None and os.path.isfile(pickled_path):
+            self._load_pkl(pickled_path)
+            return
+
+        if root_directory is not None:
+            self.init_data_list(root_directory)
+
+        if pickled_path is not None:
+            self._dump_pkl(pickled_path)
+
+    def _dump_pkl(self, filepath):
+        with open(filepath, "wb") as pickle_out:
+            pickle.dump(self.data_list, pickle_out)
+
+    def _load_pkl(self, filepath):
+        with open(filepath, "rb") as pickle_in:
+            self.data_list = pickle.load(pickle_in)
+
+    def decode_dict(self, d):
+        return {(self.label_names[k], v) for k, v in d.items()}
+
+    def init_label_dicts(self):
+        raise NotImplementedError("This is label list initialization point")
+
+    def init_data_list(self, root_directory):
+        raise NotImplementedError("This is data initialization point")
+
 
 class VocDataset(Dataset):
     def __init__(self, root_directory, pickled_path=None):
-        Dataset.__init__(self)
+        Dataset.__init__(self, root_directory, pickled_path)
 
+    def init_label_dicts(self):
         self.label_names = ['background',
                             'aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
                             'bus', 'car', 'cat', 'chair', 'cow',
@@ -99,25 +129,7 @@ class VocDataset(Dataset):
 
         self.label_map = {key: value for (value, key) in enumerate(self.label_names)}
 
-        if pickled_path is not None and os.path.isfile(pickled_path):
-            self.load(pickled_path)
-            return
-
-        if root_directory is not None:
-            self.init(root_directory)
-
-        if pickled_path is not None:
-            self.dump(pickled_path)
-
-    def dump(self, filepath):
-        with open(filepath, "wb") as pickle_out:
-            pickle.dump(self.data_list, pickle_out)
-
-    def load(self, filepath):
-        with open(filepath, "rb") as pickle_in:
-            self.data_list = pickle.load(pickle_in)
-
-    def init(self, root_directory):
+    def init_data_list(self, root_directory):
         annotations_root = os.path.join(root_directory, 'Annotations')
         images_root = os.path.join(root_directory, 'JPEGImages')
         annotations_files = os.listdir(annotations_root)
