@@ -63,7 +63,7 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, checkpoint_path,
         net = ssd.SSD(session, profile, len(data_set.label_names))
 
         if continue_training:
-            net.load_metagraph('./checkpoints/ssd/checkpoint-epoch-000.ckpt.meta', './checkpoints/ssd')
+            net.load_metagraph(checkpoint_path)
         else:
             net.build_with_vgg(checkpoint_path)
 
@@ -154,6 +154,7 @@ if __name__ == '__main__':
     weight_decay = args.weight_decay
 
 
+    # './checkpoints/ssd/checkpoint-epoch-000.ckpt.meta'
     # ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
     ds = dataset.VocDataset('/data/Workspace/data/VOCdevkit/VOC2012', '/data/Workspace/data/VOCdevkit/vokdata.pkl')
     # ds = dataset.VocDataset('/home/arthur/Workspace/data/VOC2007')

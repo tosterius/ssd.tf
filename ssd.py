@@ -1,3 +1,4 @@
+from os.path import dirname
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -75,9 +76,11 @@ class SSD:
         self.__init_ssd_part()
         self.__init_detection_layers()
 
-    def load_metagraph(self, metagraph_path, chekpoint_path):
+    def load_metagraph(self, metagraph_path, checkpoint_dir=None):
+        if checkpoint_dir is None:
+            checkpoint_dir = dirname(metagraph_path)
         saver = tf.train.import_meta_graph(metagraph_path)
-        saver.restore(self.session, tf.train.latest_checkpoint(chekpoint_path))
+        saver.restore(self.session, tf.train.latest_checkpoint(checkpoint_dir))
 
         self.input = self.session.graph.get_tensor_by_name('image_input/image_input:0')
         self.result = self.session.graph.get_tensor_by_name('output/result:0')
