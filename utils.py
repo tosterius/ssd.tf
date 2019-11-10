@@ -177,7 +177,7 @@ def get_filtered_result_bboxes(results, default_boxes, img_size,
     grouped_by_label_detections = {}
     for det in decoded_detections:
         det[0] = norm_rect_to_rect(img_size, det[0])
-        if det[0] in grouped_by_label_detections:
+        if det[1] in grouped_by_label_detections:
             grouped_by_label_detections[det[1]].append(det)
         else:
             grouped_by_label_detections[det[1]] = [det, ]
