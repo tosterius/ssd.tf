@@ -51,16 +51,18 @@ class Summary:
             self.writer.add_summary(summary, epoch)
 
 
-def train_from_scratch(n_epochs, lr, batch_size, data_set, checkpoint_path,
+def train_from_scratch(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
                        checkpoints_dir, log_dir='./', profile=SSD_300, continue_training=False):
     tf.reset_default_graph()
 
     precision_metric_local = utils.PrecisionMetric()
     precision_metric_global = utils.PrecisionMetric()
 
+    val_dataset = train_dataset.extract(0.05)
+
     with tf.Session() as session:
 
-        net = ssd.SSD(session, profile, len(data_set.label_names))
+        net = ssd.SSD(session, profile, len(train_dataset.label_names))
 
         if continue_training:
             net.load_metagraph(checkpoint_path)
@@ -74,8 +76,11 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, checkpoint_path,
         net.init_loss_and_optimizer(lr, global_step=global_step)
 
         summary_writer = tf.summary.FileWriter(log_dir)
-        precision_summary = Summary(session, summary_writer, 'train_precision', data_set.label_names)
-        loss_summary = Summary(session, summary_writer, 'train_loss', ['loss', 'confidence_loss', 'localization_loss'])
+        train_precision_summary = Summary(session, summary_writer, 'train_precision', train_dataset.label_names)
+        val_precision_summary = Summary(session, summary_writer, 'val_precision', train_dataset.label_names)
+
+        train_loss_summary = Summary(session, summary_writer, 'train_loss', ['loss', 'confidence_loss', 'localization_loss'])
+        val_loss_summary = Summary(session, summary_writer, 'val_loss', ['loss', 'confidence_loss', 'localization_loss'])
 
         saver = tf.train.Saver()
 
@@ -89,9 +94,14 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, checkpoint_path,
 
         for epoch in range(n_epochs):
             print('Epoch [{}/{}]'.format(epoch, n_epochs))
-            generator = lg.get(data_set, batch_size, loader)
-            batch_counter = 0
-            for x, y, gt in generator:
+
+            train_generator = lg.get(train_dataset, batch_size, loader)
+            for batch_counter, (x, y, gt) in enumerate(train_generator):
+                if batch_counter % 100 == 0:
+                    print("[V] Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
+                    precisions, mean = precision_metric_local.calc_and_reset()
+                    print("[V] Local prec: ", mean, precisions)
+                    break
 
                 feed = {net.input: x, net.gt: y}
                 result, total_loss, loc_loss, conf_loss, _ = session.run(
@@ -104,25 +114,54 @@ def train_from_scratch(n_epochs, lr, batch_size, data_set, checkpoint_path,
                     precision_metric_local.add(gt_objects, detections)
                     precision_metric_global.add(gt_objects, detections)
 
-                print("-Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
-                precisions, mean = precision_metric_local.calc()
-                print("-Local prec: ", mean, precisions)
-                precision_metric_local.reset()
-                batch_counter += 1
+                print("[T] Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
+                precisions, mean = precision_metric_local.calc_and_reset()
+                print("[T] Local prec: ", mean, precisions)
 
-            precisions, mean = precision_metric_global.calc()
+            train_loss_summary.append(epoch, {'loss': total_loss,
+                                              'confidence_loss': conf_loss,
+                                              'localization_loss': loc_loss})
+
+            precisions, mean = precision_metric_global.calc_and_reset()
             precisions = ds.decode_dict(precisions)
-            print("-Global prec: ", mean, precisions)
-            precision_metric_global.reset()
-            precision_summary.append(epoch, precisions)
+            print("[T] Global prec: ", mean, precisions)
+            train_precision_summary.append(epoch, precisions)
+
+            print('--Validation: ')
+            val_generator = lg.get(val_dataset, batch_size, loader)
+            for batch_counter, (x, y, gt) in enumerate(val_generator):
+
+                if batch_counter % 100 == 0:
+                    print("[V] Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
+                    precisions, mean = precision_metric_local.calc_and_reset()
+                    print("[V] Local prec: ", mean, precisions)
+                    break
+
+                feed = {net.input: x, net.gt: y}
+                result, total_loss, loc_loss, conf_loss = session.run(
+                    [net.result, net.loss, net.localization_loss, net.confidence_loss],
+                    feed_dict=feed)
+
+                for i in range(result.shape[0]):
+                    detections = utils.get_filtered_result_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
+                    gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
+                    precision_metric_local.add(gt_objects, detections)
+                    precision_metric_global.add(gt_objects, detections)
+
+            val_loss_summary.append(epoch, {'loss': total_loss,
+                                            'confidence_loss': conf_loss,
+                                            'localization_loss': loc_loss})
+
+            precisions, mean = precision_metric_global.calc_and_reset()
+            precisions = ds.decode_dict(precisions)
+            print("[V] Global prec: ", mean, precisions)
+            val_precision_summary.append(epoch, precisions)
+
             summary_writer.flush()
 
             checkpoint_path = os.path.join(checkpoints_dir, 'checkpoint-epoch-%03d.ckpt' % epoch)
-            print('-Checkpoint "%s" was created' % checkpoint_path)
-            # for var in saver._var_list:
-            #     print(var)
-
             saver.save(session, checkpoint_path)
+            print('-Checkpoint "%s" was created' % checkpoint_path)
 
 
 def test(batch_size, data_set, log_dir='./', profile=SSD_300):
@@ -162,7 +201,6 @@ if __name__ == '__main__':
     # './checkpoints/ssd/checkpoint-epoch-000.ckpt.meta'
     # ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
     ds = dataset.VocDataset('/data/Workspace/data/VOCdevkit/VOC2012', '/data/Workspace/data/VOCdevkit/vokdata.pkl')
-    # ds = dataset.VocDataset('/home/arthur/Workspace/data/VOC2007')
 
     train_from_scratch(n_epochs, lr, batch_size, ds, checkpoint, checkpoints_dir)
     # train_from_scratch(10, 0.0001, 2, ds, '/home/arthur/Workspace/projects/github/ssd.tf/vgg_16.ckpt', checkpoints_dir)

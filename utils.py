@@ -210,6 +210,11 @@ class PrecisionMetric:
         self.det_sample_ids.clear()
         self.gt_samples.clear()
 
+    def calc_and_reset(self):
+        precisions, mean = self.calc()
+        self.reset()
+        return precisions, mean
+
     def calc(self):
         mean = 0.0
         precisions = {}
