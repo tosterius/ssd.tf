@@ -81,11 +81,12 @@ def split(data_list, fractions=[0.99, 0.01]):
 
 
 class Dataset(object):
-    def __init__(self, root_directory, pickled_path=None):
+    def __init__(self):
         self.data_list = []  # list of objects of type LabeledImage
         self.label_names = {}  # label list [idx] -> name
         self.label_map = {}  # label map  [name] -> idx
 
+    def create(self, root_directory, pickled_path=None):
         self.init_label_dicts()
 
         if pickled_path is not None and os.path.isfile(pickled_path):
@@ -97,6 +98,15 @@ class Dataset(object):
 
         if pickled_path is not None:
             self._dump_pkl(pickled_path)
+
+    def extract(self, k=0.05):
+        ds = Dataset()
+        ds.label_names = self.label_names
+        ds.label_map = self.label_map
+        n = int(k * len(self.data_list))
+        ds.data_list = self.data_list[:n]
+        self.data_list = self.data_list[n:]
+        return ds
 
     def _dump_pkl(self, filepath):
         with open(filepath, "wb") as pickle_out:
@@ -118,7 +128,8 @@ class Dataset(object):
 
 class VocDataset(Dataset):
     def __init__(self, root_directory, pickled_path=None):
-        Dataset.__init__(self, root_directory, pickled_path)
+        Dataset.__init__(self)
+        self.create(root_directory, pickled_path)
 
     def init_label_dicts(self):
         self.label_names = ['background',
