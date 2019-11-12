@@ -76,7 +76,7 @@ class SSD:
         self.__init_ssd_part()
         self.__init_detection_layers()
 
-    def load_metagraph(self, metagraph_path, checkpoint_dir=None):
+    def load_metagraph(self, metagraph_path, checkpoint_dir=None, continue_training=False):
         """
         Loads pretrained checkpoint.
         :param metagraph_path: path to ".meta" file
@@ -91,17 +91,15 @@ class SSD:
         self.input = self.session.graph.get_tensor_by_name('image_input/image_input:0')
         self.result = self.session.graph.get_tensor_by_name('output/result:0')
 
-    def load_metagraph_for_optimization(self):
-        """
-        Loads pretrained checkpoint. Is used to continue training
-        :return:
-        """
-        self.gt = self.session.graph.get_tensor_by_name('labels:0')
-        self.optimizer = self.session.graph.get_tensor_by_name('optimizer/optimizer:0')
-        self.l2_reg_loss = self.session.graph.get_tensor_by_name('total_loss/l2_loss:0')
-        self.loss = self.session.graph.get_tensor_by_name('total_loss/loss:0')
-        self.confidence_loss = self.session.graph.get_tensor_by_name('confidence_loss/confidence_loss:0')
-        self.localization_loss = self.session.graph.get_tensor_by_name('localization_loss/localization_loss:0')
+        if continue_training:
+            # We need to restore the rest to continue training
+            self.gt = self.session.graph.get_tensor_by_name('labels:0')
+            self.optimizer = self.session.graph.get_tensor_by_name('optimizer/optimizer:0')
+            self.l2_reg_loss = self.session.graph.get_tensor_by_name('total_loss/l2_loss:0')
+            self.loss = self.session.graph.get_tensor_by_name('total_loss/loss:0')
+            self.confidence_loss = self.session.graph.get_tensor_by_name('confidence_loss/confidence_loss:0')
+            self.localization_loss = self.session.graph.get_tensor_by_name('localization_loss/localization_loss:0')
+
 
     def __init_vgg_16_part(self, scope='vgg_16', is_training=True, dropout_keep_prob=0.5, reg_scale=0.005):
         """

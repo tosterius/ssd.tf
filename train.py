@@ -51,8 +51,18 @@ class Summary:
             self.writer.add_summary(summary, epoch)
 
 
-def train_from_scratch(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
-                       checkpoints_dir, log_dir='./', profile=SSD_300, continue_training=False):
+def init_summaries(session, writer, label_names):
+    tps = Summary(session, writer, 'train_precision', label_names)
+    vps = Summary(session, writer, 'val_precision', label_names)
+
+    loss_names = ['loss', 'confidence_loss', 'localization_loss']
+    tls = Summary(session, writer, 'train_loss', loss_names)
+    vls = Summary(session, writer, 'val_loss', loss_names)
+    return tps, vps, tls, vls
+
+
+def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
+          checkpoints_dir, log_dir='./', profile=SSD_300, continue_training=False):
     tf.reset_default_graph()
 
     precision_metric_local = utils.PrecisionMetric()
@@ -60,63 +70,54 @@ def train_from_scratch(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
 
     val_dataset = train_dataset.extract(0.05)
 
+    def calc_and_print_stat(gt, result, batch_counter, total_loss, loc_loss, conf_loss):
+        for i in range(result.shape[0]):
+            detections = utils.get_filtered_result_bboxes(result[i], label_generator.default_boxes_rel, profile.imgsize)
+            gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
+            precision_metric_local.add(gt_objects, detections)
+            precision_metric_global.add(gt_objects, detections)
+
+        if batch_counter % 100 == 0:
+            print("Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
+            precisions, mean = precision_metric_local.calc_and_reset()
+            print("Local prec: ", mean, precisions)
+
     with tf.Session() as session:
 
         net = ssd.SSD(session, profile, len(train_dataset.label_names))
-
         if continue_training:
-            net.load_metagraph(checkpoint_path)
+            net.load_metagraph(checkpoint_path, continue_training=continue_training)
         else:
             net.build_with_vgg(checkpoint_path)
+            global_step = tf.Variable(0, trainable=False)
+            net.init_loss_and_optimizer(lr, global_step=global_step)
 
         # for op in graph.get_operations():
         #     print(op.name)
 
-        global_step = tf.Variable(0, trainable=False)
-        net.init_loss_and_optimizer(lr, global_step=global_step)
-
+        # summary loggers initialization
         summary_writer = tf.summary.FileWriter(log_dir)
-        train_precision_summary = Summary(session, summary_writer, 'train_precision', train_dataset.label_names)
-        val_precision_summary = Summary(session, summary_writer, 'val_precision', train_dataset.label_names)
-
-        train_loss_summary = Summary(session, summary_writer, 'train_loss', ['loss', 'confidence_loss', 'localization_loss'])
-        val_loss_summary = Summary(session, summary_writer, 'val_loss', ['loss', 'confidence_loss', 'localization_loss'])
+        train_precision_summary, val_precision_summary, train_loss_summary, val_loss_summary = \
+            init_summaries(session, summary_writer, train_dataset.label_names)
 
         saver = tf.train.Saver()
-
         initialize_variables(session)
 
-        lg = dataset.LabelGenerator(profile)
+        label_generator = dataset.LabelGenerator(profile)
+        image_loader = dataset.ImageLoader(profile.imgsize)
 
         print('Dataset size: {}'.format(len(ds.data_list)))
-
-        loader = dataset.ImageLoader(profile.imgsize)
-
         for epoch in range(n_epochs):
             print('Epoch [{}/{}]'.format(epoch, n_epochs))
-
-            train_generator = lg.get(train_dataset, batch_size, loader)
+            # Train
+            train_generator = label_generator.get(train_dataset, batch_size, image_loader)
             for batch_counter, (x, y, gt) in enumerate(train_generator):
-                if batch_counter % 100 == 0:
-                    print("[V] Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
-                    precisions, mean = precision_metric_local.calc_and_reset()
-                    print("[V] Local prec: ", mean, precisions)
-                    break
-
                 feed = {net.input: x, net.gt: y}
                 result, total_loss, loc_loss, conf_loss, _ = session.run(
                     [net.result, net.loss, net.localization_loss, net.confidence_loss, net.optimizer],
                     feed_dict=feed)
 
-                for i in range(result.shape[0]):
-                    detections = utils.get_filtered_result_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
-                    gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
-                    precision_metric_local.add(gt_objects, detections)
-                    precision_metric_global.add(gt_objects, detections)
-
-                print("[T] Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
-                precisions, mean = precision_metric_local.calc_and_reset()
-                print("[T] Local prec: ", mean, precisions)
+                calc_and_print_stat(gt, result, batch_counter, total_loss, loc_loss, conf_loss)
 
             train_loss_summary.append(epoch, {'loss': total_loss,
                                               'confidence_loss': conf_loss,
@@ -127,26 +128,16 @@ def train_from_scratch(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
             print("[T] Global prec: ", mean, precisions)
             train_precision_summary.append(epoch, precisions)
 
+            # Validation
             print('--Validation: ')
-            val_generator = lg.get(val_dataset, batch_size, loader)
+            val_generator = label_generator.get(val_dataset, batch_size, image_loader)
             for batch_counter, (x, y, gt) in enumerate(val_generator):
-
-                if batch_counter % 100 == 0:
-                    print("[V] Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
-                    precisions, mean = precision_metric_local.calc_and_reset()
-                    print("[V] Local prec: ", mean, precisions)
-                    break
-
                 feed = {net.input: x, net.gt: y}
                 result, total_loss, loc_loss, conf_loss = session.run(
                     [net.result, net.loss, net.localization_loss, net.confidence_loss],
                     feed_dict=feed)
 
-                for i in range(result.shape[0]):
-                    detections = utils.get_filtered_result_bboxes(result[i], lg.default_boxes_rel, profile.imgsize)
-                    gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
-                    precision_metric_local.add(gt_objects, detections)
-                    precision_metric_global.add(gt_objects, detections)
+                calc_and_print_stat(gt, result, batch_counter, total_loss, loc_loss, conf_loss)
 
             val_loss_summary.append(epoch, {'loss': total_loss,
                                             'confidence_loss': conf_loss,
@@ -191,6 +182,7 @@ if __name__ == '__main__':
     log_dir = args.log_dir
     experiment_name = args.experiment
     checkpoint = args.checkpoint
+    # checkpoint = './checkpoints/ssd/checkpoint-epoch-009.ckpt.meta'
     n_epochs = args.n_epochs
     batch_size = args.batch_size
     lr = args.lr
@@ -200,7 +192,7 @@ if __name__ == '__main__':
 
     # './checkpoints/ssd/checkpoint-epoch-000.ckpt.meta'
     # ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
-    ds = dataset.VocDataset('/data/Workspace/data/VOCdevkit/VOC2012', '/data/Workspace/data/VOCdevkit/vokdata.pkl')
+    ds = dataset.VocDataset(data_dir, '/data/Workspace/data/VOCdevkit/vokdata.pkl')
 
-    train_from_scratch(n_epochs, lr, batch_size, ds, checkpoint, checkpoints_dir)
+    train(n_epochs, lr, batch_size, ds, checkpoint, checkpoints_dir)
     # train_from_scratch(10, 0.0001, 2, ds, '/home/arthur/Workspace/projects/github/ssd.tf/vgg_16.ckpt', checkpoints_dir)
