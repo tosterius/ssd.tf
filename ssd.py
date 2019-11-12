@@ -52,15 +52,15 @@ class SSD:
 
         # output tensors:
         self.logits = None
-        self.classifier = None
-        self.detections = None
-        self.result = None  # (?, 8652, 25)     for ssd 300 and default profile
+        self.classifier = None  # (?, 8652, :self.n_classes)
+        self.detections = None  # (?, 8652, self.n_classes:)
+        self.result = None      # (?, 8652, 25)     for ssd 300 and default profile
 
         self.optimizer = None
-        self.l2_norm = 0
-        self.loss = None
+        self.loss = None        # total loss
         self.confidence_loss = None
         self.localization_loss = None
+        self.l2_reg_loss = 0
 
     def build_with_vgg(self, vgg_ckpt_path):
         with tf.variable_scope('image_input'):
@@ -77,6 +77,12 @@ class SSD:
         self.__init_detection_layers()
 
     def load_metagraph(self, metagraph_path, checkpoint_dir=None):
+        """
+        Loads pretrained checkpoint.
+        :param metagraph_path: path to ".meta" file
+        :param checkpoint_dir:
+        :return:
+        """
         if checkpoint_dir is None:
             checkpoint_dir = dirname(metagraph_path)
         saver = tf.train.import_meta_graph(metagraph_path)
@@ -86,14 +92,21 @@ class SSD:
         self.result = self.session.graph.get_tensor_by_name('output/result:0')
 
     def load_metagraph_for_optimization(self):
+        """
+        Loads pretrained checkpoint. Is used to continue training
+        :return:
+        """
         self.gt = self.session.graph.get_tensor_by_name('labels:0')
         self.optimizer = self.session.graph.get_tensor_by_name('optimizer/optimizer:0')
-        self.l2_norm = self.session.graph.get_tensor_by_name('total_loss/l2_loss:0')
+        self.l2_reg_loss = self.session.graph.get_tensor_by_name('total_loss/l2_loss:0')
         self.loss = self.session.graph.get_tensor_by_name('total_loss/loss:0')
         self.confidence_loss = self.session.graph.get_tensor_by_name('confidence_loss/confidence_loss:0')
         self.localization_loss = self.session.graph.get_tensor_by_name('localization_loss/localization_loss:0')
 
     def __init_vgg_16_part(self, scope='vgg_16', is_training=True, dropout_keep_prob=0.5, reg_scale=0.005):
+        """
+        Creates vgg16 model
+        """
         with variable_scope.variable_scope(scope, 'vgg_16', [self.input]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
             with slim.arg_scope([slim.conv2d, slim.max_pool2d], outputs_collections=end_points_collection):
@@ -109,6 +122,7 @@ class SSD:
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool3', padding='SAME')  # 38x38
                 self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv4',
                                        weights_regularizer=vgg_weights_reg)
+                #TODO: comment
                 self.feature_maps.append(self.net)
                 self.net = slim.max_pool2d(self.net, [2, 2], scope='pool4', padding='SAME')
                 self.net = slim.repeat(self.net, 3, slim.conv2d, 512, [3, 3], scope='conv5',
@@ -122,7 +136,8 @@ class SSD:
                 self.vgg_end_points = utils.convert_collection_to_dict(end_points_collection)
 
     def __build_vgg_mods(self, scope='ssd_300'):
-        """https://arxiv.org/pdf/1512.02325.pdf page 7 item 3"""
+        """Converts fc6 and fc7 layers to conv layers as it specified here
+         https://arxiv.org/pdf/1512.02325.pdf page 7 item 3"""
         with tf.variable_scope('vgg_16', reuse=True):
             self.vgg_fc6_w = tf.get_variable('fc6/weights')
             self.vgg_fc6_b = tf.get_variable('fc6/biases')
@@ -175,7 +190,7 @@ class SSD:
                 for j in range(mp.n_bboxes):
                     c, norm = conv_with_l2_reg(feature_map, self.label_dim, mp.size, 'classifier%d_%d' % (i, j))
                     output.append(c)
-                    self.l2_norm += norm
+                    self.l2_reg_loss += norm
 
         with tf.variable_scope('output'):
             output = tf.concat(output, axis=1, name='output')
@@ -248,11 +263,11 @@ class SSD:
             self.localization_loss = tf.reduce_mean(localization_loss, name='localization_loss')
 
         with tf.variable_scope('total_loss'):
-            reg_w = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-            l2_det_loss = tf.multiply(decay, self.l2_norm, name='l2_loss')
-            l2_loss = l2_det_loss + tf.reduce_sum(reg_w)
+            l2_feature_reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+            l2_det_loss = tf.multiply(decay, self.l2_reg_loss, name='l2_loss')
+            self.l2_reg_loss = l2_det_loss + tf.reduce_sum(l2_feature_reg_losses)
             loss = tf.add(self.localization_loss, self.confidence_loss, name='loc_conf_loss')
-            self.loss = tf.add(loss, l2_loss, name='loss')
+            self.loss = tf.add(loss, self.l2_reg_loss, name='loss')
 
         with tf.variable_scope('optimizer'):
             self.optimizer = tf.train.MomentumOptimizer(lr, momentum)
