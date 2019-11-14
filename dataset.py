@@ -9,7 +9,7 @@ from profiles import SSD_300
 import utils
 
 
-LabeledObject = namedtuple('LabeledObject', ['rect', 'label'])
+LabeledObject = namedtuple('LabeledObject', ['rect', 'label', 'filepath'])
 
 LabeledImageFile = namedtuple('LabeledImageFile', ['filepath', 'size', 'objects'])
 
@@ -177,7 +177,7 @@ class VocDataset(Dataset):
             w = float(xmax - xmin) / img_w
             h = float(ymax - ymin) / img_h
 
-            labeled_file.objects.append(LabeledObject(label=label, rect=utils.NormRect(xc, yc, w, h)))
+            labeled_file.objects.append(LabeledObject(label=label, rect=utils.NormRect(xc, yc, w, h), filepath=filepath))
 
         self.data_list.append(labeled_file)
 

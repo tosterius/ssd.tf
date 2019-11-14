@@ -1,8 +1,37 @@
+import cv2
 import numpy as np
 from collections import namedtuple
 from collections import defaultdict, Counter
 
+
 NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
+
+
+def draw_rect(img, rect, label, score, rect_color, font_color):
+    text = str(label) if score is None else '{}: {:.2}'.format(str(label), score)
+    text_width = 10 * len(text)
+    rect_text = Rect(rect.x0, rect.y0 - 20, rect.x0 + text_width, rect.y0)
+    cv2.rectangle(img, (int(rect.x0), int(rect.y0)), (int(rect.x1), int(rect.y1)), rect_color, 1)
+    cv2.rectangle(img, (int(rect_text.x0), int(rect_text.y0)), (int(rect_text.x1), int(rect_text.y1)), rect_color,
+                  -1)
+    pos_text = (rect.x0 + 2, rect.y0 - 5)
+    cv2.putText(img, text, pos_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, font_color)
+    return img
+
+
+def draw_detections(destpath, filepath, detections, label_map=None, n=5):
+    img = cv2.imread(filepath, cv2.IMREAD_COLOR)
+    h, w, _ = img.shape
+    sorted(detections, key=lambda det: det[-2])  # sort by score
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (100, 0, 255), (200, 150, 200)]
+    text_colors = [(0, 255, 0), (0, 0, 255), (255, 0, 0), (0, 255, 0), (0, 200, 0)]
+    n = min(n, len(detections))
+    for i in range(n):
+        det = detections[i]
+        rect = norm_rect_to_rect((h, w), det[0])
+        label = det[1] if label_map is None else label_map[det[1]]
+        draw_rect(img, rect, label, det[-2], colors[i], text_colors[i])
+    cv2.imwrite(destpath, img)
 
 
 class Rect:
@@ -80,15 +109,15 @@ def get_prior_boxes(profile):
 
 def nms(detections, threshold):
     """
-    :param detections: [[label, score, norm_rects], ..]
+    :param detections: [[norm_rects, label, score, rects], ..]
     :param threshold: float < 1.0
     :return:
     """
     rects = np.empty(shape=(len(detections), 4))
     scores = np.empty(shape=(len(detections),))
     for i, det in enumerate(detections):
-        rects[i] = det[0].as_array()
-        scores[i] = det[2]
+        rects[i] = det[-1].as_array()
+        scores[i] = det[-2]
 
     xmin, ymin, xmax, ymax = rects[:, 0], rects[:, 1], rects[:, 2], rects[:, 3]
 
@@ -176,7 +205,7 @@ def get_filtered_result_bboxes(results, default_boxes, img_size,
     decoded_detections = net_predictions_to_bboxes(results, default_boxes, confidence_thresh, number_thresh)
     grouped_by_label_detections = {}
     for det in decoded_detections:
-        det[0] = norm_rect_to_rect(img_size, det[0])
+        det.append(norm_rect_to_rect(img_size, det[0]))
         if det[1] in grouped_by_label_detections:
             grouped_by_label_detections[det[1]].append(det)
         else:
@@ -199,7 +228,7 @@ class PrecisionMetric:
 
     def add(self, gt_sample, detections):
         self.gt_samples.append(gt_sample)
-        for rect, label, score in detections:
+        for _, label, score, rect in detections:
             self.det_rects[label].append(rect.as_array())
             self.det_confs[label].append(score)
             self.det_sample_ids[label].append(len(self.gt_samples) - 1)
