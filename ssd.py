@@ -10,7 +10,7 @@ from tensorflow.contrib.framework import get_variables_to_restore
 def conv_with_l2_reg(tensor, depth, layer_hw, name):
     with tf.variable_scope(name):
         weights = tf.get_variable("filter", shape=[3, 3, tensor.get_shape()[3], depth],
-                            initializer=tf.contrib.layers.xavier_initializer())
+                                  initializer=tf.contrib.layers.xavier_initializer())
         bias = tf.Variable(tf.zeros(depth), name='biases')
         x = tf.nn.conv2d(tensor, weights, strides=[1, 1, 1, 1], padding='SAME')
         x = tf.nn.bias_add(x, bias)
@@ -54,7 +54,7 @@ class SSD:
         self.logits = None
         self.classifier = None  # (?, 8652, :self.n_classes)
         self.detections = None  # (?, 8652, self.n_classes:)
-        self.result = None      # (?, 8652, 25)     for ssd 300 and default profile
+        self.output = None      # (?, 8652, 25)     for ssd 300 and default profile
 
         self.optimizer = None
         self.loss = None        # total loss
@@ -89,7 +89,7 @@ class SSD:
         saver.restore(self.session, tf.train.latest_checkpoint(checkpoint_dir))
 
         self.input = self.session.graph.get_tensor_by_name('image_input/image_input:0')
-        self.result = self.session.graph.get_tensor_by_name('output/result:0')
+        self.output = self.session.graph.get_tensor_by_name('output/output:0')
 
         if continue_training:
             # We need to restore the rest to continue training
@@ -99,7 +99,6 @@ class SSD:
             self.loss = self.session.graph.get_tensor_by_name('total_loss/loss:0')
             self.confidence_loss = self.session.graph.get_tensor_by_name('confidence_loss/confidence_loss:0')
             self.localization_loss = self.session.graph.get_tensor_by_name('localization_loss/localization_loss:0')
-
 
     def __init_vgg_16_part(self, scope='vgg_16', is_training=True, dropout_keep_prob=0.5, reg_scale=0.005):
         """
@@ -196,7 +195,7 @@ class SSD:
             self.logits = output[:, :, :self.n_classes]
             self.classifier = tf.nn.softmax(self.logits)
             self.detections = output[:, :, self.n_classes:]
-            self.result = tf.concat([self.classifier, self.detections], axis=-1, name='result')
+            self.output = tf.concat([self.classifier, self.detections], axis=-1, name='result')
 
     def init_loss_and_optimizer(self, lr, momentum=0.9, global_step=None, decay=0.005):
         self.gt = tf.placeholder(tf.float32, name='labels', shape=[None, None, self.label_dim])

@@ -63,6 +63,7 @@ def init_summaries(session, writer, label_names):
 
 def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
           checkpoints_dir, log_dir='./', profile=SSD_300, continue_training=False):
+
     tf.reset_default_graph()
 
     precision_metric_local = utils.PrecisionMetric()
@@ -77,7 +78,7 @@ def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
             precision_metric_local.add(gt_objects, detections)
             precision_metric_global.add(gt_objects, detections)
 
-        if batch_counter % 100 == 0:
+        if batch_counter % 10 == 0:
             print("Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
             precisions, mean = precision_metric_local.calc_and_reset()
             print("Local prec: ", mean, precisions)
@@ -114,7 +115,7 @@ def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
             for batch_counter, (x, y, gt) in enumerate(train_generator):
                 feed = {net.input: x, net.gt: y}
                 result, total_loss, loc_loss, conf_loss, _ = session.run(
-                    [net.result, net.loss, net.localization_loss, net.confidence_loss, net.optimizer],
+                    [net.output, net.loss, net.localization_loss, net.confidence_loss, net.optimizer],
                     feed_dict=feed)
 
                 calc_and_print_stat(gt, result, batch_counter, total_loss, loc_loss, conf_loss)
@@ -134,7 +135,7 @@ def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
             for batch_counter, (x, y, gt) in enumerate(val_generator):
                 feed = {net.input: x, net.gt: y}
                 result, total_loss, loc_loss, conf_loss = session.run(
-                    [net.result, net.loss, net.localization_loss, net.confidence_loss],
+                    [net.output, net.loss, net.localization_loss, net.confidence_loss],
                     feed_dict=feed)
 
                 calc_and_print_stat(gt, result, batch_counter, total_loss, loc_loss, conf_loss)

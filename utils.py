@@ -22,7 +22,7 @@ def draw_rect(img, rect, label, score, rect_color, font_color):
 def draw_detections(destpath, filepath, detections, label_map=None, n=5):
     img = cv2.imread(filepath, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
-    sorted(detections, key=lambda det: det[-2])  # sort by score
+    sorted(detections, key=lambda d: d[-2])  # sort by score
     colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (100, 0, 255), (200, 150, 200)]
     text_colors = [(0, 255, 0), (0, 0, 255), (255, 0, 0), (0, 255, 0), (0, 200, 0)]
     n = min(n, len(detections))

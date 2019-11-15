@@ -87,7 +87,6 @@ class Dataset(object):
         self.label_map = {}  # label map  [name] -> idx
 
     def create(self, root_directory, pickled_path=None):
-        self.init_label_dicts()
 
         if pickled_path is not None and os.path.isfile(pickled_path):
             self._load_pkl(pickled_path)
@@ -119,19 +118,14 @@ class Dataset(object):
     def decode_dict(self, d):
         return {self.label_names[k]: v for k, v in d.items()}
 
-    def init_label_dicts(self):
-        raise NotImplementedError("This is label list initialization point")
-
     def init_data_list(self, root_directory):
         raise NotImplementedError("This is data initialization point")
 
 
 class VocDataset(Dataset):
-    def __init__(self, root_directory, pickled_path=None):
+    def __init__(self, root_directory=None, pickled_path=None):
         Dataset.__init__(self)
-        self.create(root_directory, pickled_path)
 
-    def init_label_dicts(self):
         self.label_names = ['background',
                             'aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
                             'bus', 'car', 'cat', 'chair', 'cow',
@@ -139,6 +133,9 @@ class VocDataset(Dataset):
                             'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
 
         self.label_map = {key: value for (value, key) in enumerate(self.label_names)}
+
+        if root_directory is not None:
+            self.create(root_directory, pickled_path)
 
     def init_data_list(self, root_directory):
         annotations_root = os.path.join(root_directory, 'Annotations')
