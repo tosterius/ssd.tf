@@ -10,34 +10,9 @@ import utils
 from profiles import SSD_300
 
 
-def make_dir(dir_path):
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
-    return dir_path
-
-
-def list_files(directory_path, exts):
-    from fnmatch import fnmatch
-
-    def check_extension(file_path, exts):
-        for ext in exts:
-            curr_ext = os.path.splitext(file_path)[1]
-            if fnmatch(curr_ext, ext):
-                return True
-        return False
-
-    file_list = list()
-    for root, subdirs, files in os.walk(directory_path):
-        for filename in files:
-            file_path = os.path.join(root, filename)
-            if check_extension(file_path, exts):
-                file_list.append(file_path)
-    return file_list
-
-
 def run(input_path, output_path, checkpoint_path, batch_size=20, profile=SSD_300):
     ds = dataset.VocDataset()
-    make_dir(output_path)
+    utils.make_dir(output_path)
     tf.reset_default_graph()
     default_boxes_rel = utils.get_prior_boxes(profile)
 
@@ -46,7 +21,7 @@ def run(input_path, output_path, checkpoint_path, batch_size=20, profile=SSD_300
         net = ssd.SSD(session, profile, len(ds.label_names))
         net.load_metagraph(checkpoint_path, continue_training=False)
 
-        file_list = list_files(input_path, ["*.jpg", "*.png"])
+        file_list = utils.list_files(input_path, ["*.jpg", "*.png"])
         for file_batch in dataset.batch_iterator(file_list, batch_size):
             data_list = []
             for filepath in file_batch:

@@ -9,12 +9,6 @@ import utils
 from profiles import SSD_300
 
 
-def make_dir(dir_path):
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
-    return dir_path
-
-
 def initialize_variables(session):
     init_tensors = [tf.is_variable_initialized(var) for var in tf.global_variables()]
     init_flags = session.run(init_tensors)
@@ -179,7 +173,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    checkpoints_dir = make_dir(os.path.join(args.dest_dir, args.experiment))
+    checkpoints_dir = utils.make_dir(os.path.join(args.dest_dir, args.experiment))
     data_dir = args.data_dir
     log_dir = args.log_dir
     experiment_name = args.experiment

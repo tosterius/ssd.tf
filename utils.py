@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 from collections import namedtuple
@@ -5,33 +6,6 @@ from collections import defaultdict, Counter
 
 
 NormRect = namedtuple('NormRect', ['xc', 'yc', 'w', 'h'])
-
-
-def draw_rect(img, rect, label, score, rect_color, font_color):
-    text = str(label) if score is None else '{}: {:.2}'.format(str(label), score)
-    text_width = 10 * len(text)
-    rect_text = Rect(rect.x0, rect.y0 - 20, rect.x0 + text_width, rect.y0)
-    cv2.rectangle(img, (int(rect.x0), int(rect.y0)), (int(rect.x1), int(rect.y1)), rect_color, 1)
-    cv2.rectangle(img, (int(rect_text.x0), int(rect_text.y0)), (int(rect_text.x1), int(rect_text.y1)), rect_color,
-                  -1)
-    pos_text = (rect.x0 + 2, rect.y0 - 5)
-    cv2.putText(img, text, pos_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, font_color)
-    return img
-
-
-def draw_detections(destpath, filepath, detections, label_names=None, n=5):
-    img = cv2.imread(filepath, cv2.IMREAD_COLOR)
-    h, w, _ = img.shape
-    sorted(detections, key=lambda d: d[-2])  # sort by score
-    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (100, 0, 255), (200, 150, 200)]
-    text_colors = [(0, 255, 0), (0, 0, 255), (255, 0, 0), (0, 255, 0), (0, 200, 0)]
-    n = min(n, len(detections))
-    for i in range(n):
-        det = detections[i]
-        rect = norm_rect_to_rect((h, w), det[0])
-        label = det[1] if label_names is None else label_names[det[1]]
-        draw_rect(img, rect, label, det[-2], colors[i], text_colors[i])
-    cv2.imwrite(destpath, img)
 
 
 class Rect:
@@ -221,6 +195,8 @@ def get_filtered_result_bboxes(results, default_boxes, img_size,
     return result
 
 
+# -------------------------------------- precision calculator ----------------------------------------------------------
+
 class PrecisionMetric:
     def __init__(self):
         self.overlap_thresh = 0.5
@@ -317,3 +293,59 @@ class PrecisionMetric:
         n_classes = len(precisions)
         mean = 0 if n_classes == 0 else mean / n_classes
         return precisions, mean
+
+
+# --------------------------------------------drawing ------------------------------------------------------------------
+
+def draw_rect(img, rect, label, score, rect_color, font_color):
+    text = str(label) if score is None else '{}: {:.2}'.format(str(label), score)
+    text_width = 10 * len(text)
+    rect_text = Rect(rect.x0, rect.y0 - 20, rect.x0 + text_width, rect.y0)
+    cv2.rectangle(img, (int(rect.x0), int(rect.y0)), (int(rect.x1), int(rect.y1)), rect_color, 1)
+    cv2.rectangle(img, (int(rect_text.x0), int(rect_text.y0)), (int(rect_text.x1), int(rect_text.y1)), rect_color,
+                  -1)
+    pos_text = (rect.x0 + 2, rect.y0 - 5)
+    cv2.putText(img, text, pos_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, font_color)
+    return img
+
+
+def draw_detections(destpath, filepath, detections, label_names=None, n=5):
+    img = cv2.imread(filepath, cv2.IMREAD_COLOR)
+    h, w, _ = img.shape
+    sorted(detections, key=lambda d: d[-2])  # sort by score
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (100, 0, 255), (200, 150, 200)]
+    text_colors = [(0, 255, 0), (0, 0, 255), (255, 0, 0), (0, 255, 0), (0, 200, 0)]
+    n = min(n, len(detections))
+    for i in range(n):
+        det = detections[i]
+        rect = norm_rect_to_rect((h, w), det[0])
+        label = det[1] if label_names is None else label_names[det[1]]
+        draw_rect(img, rect, label, det[-2], colors[i], text_colors[i])
+    cv2.imwrite(destpath, img)
+
+
+# ----------------------------------------------- fs utils -------------------------------------------------------------
+
+def make_dir(dir_path):
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+    return dir_path
+
+
+def list_files(directory_path, exts):
+    from fnmatch import fnmatch
+
+    def check_extension(file_path, exts):
+        for ext in exts:
+            curr_ext = os.path.splitext(file_path)[1]
+            if fnmatch(curr_ext, ext):
+                return True
+        return False
+
+    file_list = list()
+    for root, subdirs, files in os.walk(directory_path):
+        for filename in files:
+            file_path = os.path.join(root, filename)
+            if check_extension(file_path, exts):
+                file_list.append(file_path)
+    return file_list
