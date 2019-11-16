@@ -19,7 +19,7 @@ def draw_rect(img, rect, label, score, rect_color, font_color):
     return img
 
 
-def draw_detections(destpath, filepath, detections, label_map=None, n=5):
+def draw_detections(destpath, filepath, detections, label_names=None, n=5):
     img = cv2.imread(filepath, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     sorted(detections, key=lambda d: d[-2])  # sort by score
@@ -29,7 +29,7 @@ def draw_detections(destpath, filepath, detections, label_map=None, n=5):
     for i in range(n):
         det = detections[i]
         rect = norm_rect_to_rect((h, w), det[0])
-        label = det[1] if label_map is None else label_map[det[1]]
+        label = det[1] if label_names is None else label_names[det[1]]
         draw_rect(img, rect, label, det[-2], colors[i], text_colors[i])
     cv2.imwrite(destpath, img)
 
@@ -56,8 +56,10 @@ def norm_rect_to_rect(img_size: tuple, rect: NormRect):
     yc = rect.yc * img_size[1]
     w_half = rect.w * img_size[0] / 2.0
     h_half = rect.h * img_size[1] / 2.0
+    x0, x1 = max(0, xc - w_half), min(img_size[1] - 1, xc + w_half)
+    y0, y1 = max(0, yc - h_half), min(img_size[0] - 1, yc + h_half)
     # TODO: OverflowError: cannot convert float infinity to integer
-    return Rect(int(xc - w_half), int(yc - h_half), int(xc + w_half), int(yc + h_half))
+    return Rect(int(x0), int(y0), int(x1), int(y1))
 
 
 def rect_to_norm_rect(img_size: tuple, rect: Rect):
@@ -149,14 +151,15 @@ def nms(detections, threshold):
     return pick
 
 
-def calc_jaccard_overlap(box_as_array, prior_boxes):
-    area_prior = (prior_boxes[:, 2] - prior_boxes[:, 0] + 1) * (prior_boxes[:, 3] - prior_boxes[:, 1] + 1)
+def calc_jaccard_overlap(box_as_array, default_boxes):
+    # For each default box calculates IOU
+    area_prior = (default_boxes[:, 2] - default_boxes[:, 0] + 1) * (default_boxes[:, 3] - default_boxes[:, 1] + 1)
     area_box = (box_as_array[2] - box_as_array[0] + 1) * (box_as_array[3] - box_as_array[1] + 1)
 
-    xmin = np.maximum(box_as_array[0], prior_boxes[:, 0])
-    ymin = np.maximum(box_as_array[1], prior_boxes[:, 1])
-    xmax = np.minimum(box_as_array[2], prior_boxes[:, 2])
-    ymax = np.minimum(box_as_array[3], prior_boxes[:, 3])
+    xmin = np.maximum(box_as_array[0], default_boxes[:, 0])
+    ymin = np.maximum(box_as_array[1], default_boxes[:, 1])
+    xmax = np.minimum(box_as_array[2], default_boxes[:, 2])
+    ymax = np.minimum(box_as_array[3], default_boxes[:, 3])
 
     w = np.maximum(0, xmax - xmin + 1)
     h = np.maximum(0, ymax - ymin + 1)

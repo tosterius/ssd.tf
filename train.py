@@ -170,11 +170,12 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', default='/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt',
                         help='path to pretrained VGG16 model(checkpoint file)')
     parser.add_argument('--continue', action='store_true', default=False)
-    parser.add_argument('--n-epochs', type=int, default=50, help='number of epochs')
+    parser.add_argument('--n-epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--batch-size', type=int, default=20, help='batch size')
-    parser.add_argument('--lr', type=int, default=0.0001, help='learning rate')
+    parser.add_argument('--lr', type=int, default=0.00008, help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.9, help='momentum for the optimizer')
     parser.add_argument('--weight-decay', type=float, default=0.001, help='L2 normalization factor')
+    parser.add_argument('--val-frac', type=float, default=0.05, help='the fraction of validation data')
 
     args = parser.parse_args()
 
@@ -183,17 +184,12 @@ if __name__ == '__main__':
     log_dir = args.log_dir
     experiment_name = args.experiment
     checkpoint = args.checkpoint
-    # checkpoint = './checkpoints/ssd/checkpoint-epoch-009.ckpt.meta'
     n_epochs = args.n_epochs
     batch_size = args.batch_size
     lr = args.lr
     momentum = args.momentum
     weight_decay = args.weight_decay
 
-
-    # './checkpoints/ssd/checkpoint-epoch-000.ckpt.meta'
-    # ds = dataset.VocDataset('/data/Workspace/data/VOCDebug')
     ds = dataset.VocDataset(data_dir, '/data/Workspace/data/VOCdevkit/vokdata.pkl')
 
     train(n_epochs, lr, batch_size, ds, checkpoint, checkpoints_dir)
-    # train_from_scratch(10, 0.0001, 2, ds, '/home/arthur/Workspace/projects/github/ssd.tf/vgg_16.ckpt', checkpoints_dir)

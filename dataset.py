@@ -8,11 +8,13 @@ from random import shuffle
 from profiles import SSD_300
 import utils
 
-
+# representation of an object on the image
 LabeledObject = namedtuple('LabeledObject', ['rect', 'label', 'filepath'])
 
+# representation of an image file in the dataset, size - (h, w), objects - a list of LabeledObjects
 LabeledImageFile = namedtuple('LabeledImageFile', ['filepath', 'size', 'objects'])
 
+# similar to LabeledImageFile but 'data' here is a binary data of an image
 LabeledImage = namedtuple('LabeledImage', ['data', 'objects'])
 
 
@@ -31,6 +33,12 @@ def lo_to_abs_rects(img_size, list_of_lo):
 
 
 def default_boxes_to_array(default_boxes, img_size):
+    """
+    Scales the default boxes coordinates to their absolute values
+    :param default_boxes:
+    :param img_size: (h, w)
+    :return:
+    """
     arr = np.zeros((len(default_boxes), 4))
     for i, box in enumerate(default_boxes):
         # the rect absolute coordinates might be out of img_size

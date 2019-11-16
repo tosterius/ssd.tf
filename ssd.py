@@ -146,10 +146,12 @@ class SSD:
                 self.net = tf.nn.conv2d(self.net, self.vgg_fc6_w, strides=[1, 1, 1, 1], padding='SAME')
                 self.net = tf.nn.bias_add(self.net, self.vgg_fc6_b)
                 self.net = tf.nn.relu(self.net)
+                self.l2_reg_loss += tf.nn.l2_loss(self.vgg_fc6_w)
             with tf.variable_scope('conv7'):
                 self.net = tf.nn.conv2d(self.net, self.vgg_fc7_w, strides=[1, 1, 1, 1], padding='SAME')
                 self.net = tf.nn.bias_add(self.net, self.vgg_fc7_b)
                 self.net = tf.nn.relu(self.net)
+                self.l2_reg_loss += tf.nn.l2_loss(self.vgg_fc7_w)
                 self.feature_maps.append(self.net)
         # TODO l2 norm?
 
@@ -180,24 +182,33 @@ class SSD:
         # in [12] to scale the feature norm at each location"
         self.feature_maps[0] = l2_normalization(self.feature_maps[0], 20, 512, 'l2_norm_conv4_3')
 
-        output = []
+        # Convolutional predictors for detection (page 3 item 2.1)
+        predictors = []
         with tf.variable_scope('classifiers'):
             for i, feature_map in enumerate(self.feature_maps):
                 mp = self.profile.maps[i]
                 for j in range(mp.n_bboxes):
                     c, norm = conv_with_l2_reg(feature_map, self.label_dim, mp.size, 'classifier%d_%d' % (i, j))
-                    output.append(c)
+                    predictors.append(c)
                     self.l2_reg_loss += norm
 
         with tf.variable_scope('output'):
-            output = tf.concat(output, axis=1, name='output')
-            self.n_anchors = tf.shape(output, out_type=tf.int64)[1]
-            self.logits = output[:, :, :self.n_classes]
+            predictors = tf.concat(predictors, axis=1, name='output')
+            self.n_anchors = tf.shape(predictors, out_type=tf.int64)[1]
+            self.logits = predictors[:, :, :self.n_classes]
             self.classifier = tf.nn.softmax(self.logits)
-            self.detections = output[:, :, self.n_classes:]
+            self.detections = predictors[:, :, self.n_classes:]
             self.output = tf.concat([self.classifier, self.detections], axis=-1, name='result')
 
     def init_loss_and_optimizer(self, lr, momentum=0.9, global_step=None, decay=0.005):
+        """
+        Creates training objective
+        :param lr:
+        :param momentum:
+        :param global_step:
+        :param decay:
+        :return:
+        """
         self.gt = tf.placeholder(tf.float32, name='labels', shape=[None, None, self.label_dim])
 
         batch_size = tf.shape(self.gt)[0]

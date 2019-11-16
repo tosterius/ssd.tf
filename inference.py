@@ -35,14 +35,6 @@ def list_files(directory_path, exts):
     return file_list
 
 
-def initialize_variables(session):
-    init_tensors = [tf.is_variable_initialized(var) for var in tf.global_variables()]
-    init_flags = session.run(init_tensors)
-    flag_tensor_pairs = zip(init_flags, tf.global_variables())
-    flag_tensor_pairs = [var for init, var in flag_tensor_pairs if not init]
-    session.run(tf.variables_initializer(flag_tensor_pairs))
-
-
 def run(input_path, output_path, checkpoint_path, batch_size=20, profile=SSD_300):
     ds = dataset.VocDataset()
     make_dir(output_path)
@@ -54,7 +46,6 @@ def run(input_path, output_path, checkpoint_path, batch_size=20, profile=SSD_300
         net = ssd.SSD(session, profile, len(ds.label_names))
         net.load_metagraph(checkpoint_path, continue_training=False)
 
-        initialize_variables(session)
         file_list = list_files(input_path, ["*.jpg", "*.png"])
         for file_batch in dataset.batch_iterator(file_list, batch_size):
             data_list = []
@@ -75,7 +66,7 @@ def run(input_path, output_path, checkpoint_path, batch_size=20, profile=SSD_300
             for filepath, dets in detections_per_file:
                 basename = os.path.basename(filepath)
                 destpath = os.path.join(output_path, basename)
-                utils.draw_detections(destpath, filepath, dets, label_map=ds.label_map)
+                utils.draw_detections(destpath, filepath, dets, label_names=ds.label_names)
 
 
 if __name__ == '__main__':
@@ -83,7 +74,7 @@ if __name__ == '__main__':
     parser.add_argument('--data-dir', default='/data/Workspace/data/test', help='data directory')
     parser.add_argument('--dest-dir', default='./result', help='output directory')
     parser.add_argument('--checkpoint',
-                        default='/data/Workspace/github/ssd.tf/checkpoints/ssd/checkpoint-epoch-020.ckpt.meta',
+                        default='/data/Workspace/github/ssd.tf/checkpoints/ssd/checkpoint-epoch-009.ckpt.meta',
                         help='path to pretrained model(checkpoint file)')
     parser.add_argument('--batch-size', type=int, default=20, help='batch size')
     args = parser.parse_args()
