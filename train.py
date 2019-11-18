@@ -93,7 +93,7 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
         train_precision_summary, val_precision_summary, train_loss_summary, val_loss_summary = \
             init_summaries(session, summary_writer, train_dataset.label_names)
 
-        saver = tf.train.Saver()
+        saver = tf.train.Saver(max_to_keep=10)
         initialize_variables(session)
 
         label_generator = dataset.LabelGenerator(profile)
