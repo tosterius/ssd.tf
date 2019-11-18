@@ -55,15 +55,16 @@ def init_summaries(session, writer, label_names):
     return tps, vps, tls, vls
 
 
-def train(n_epochs, lr, weight_decay, batch_size, train_dataset, checkpoint_path,
-          checkpoints_dir, log_dir='./', profile=SSD_300, continue_training=False):
+def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint_path,
+          checkpoints_dir, log_dir='./', continue_training=False, profile=SSD_300):
 
     tf.reset_default_graph()
 
     precision_metric_local = utils.PrecisionMetric()
     precision_metric_global = utils.PrecisionMetric()
 
-    val_dataset = train_dataset.extract(0.05)
+    train_dataset = datasets[1]
+    val_dataset = datasets[1]
 
     def calc_and_print_stat(e, gt, result, batch_counter, total_loss, loc_loss, conf_loss):
         for i in range(result.shape[0]):
@@ -85,10 +86,7 @@ def train(n_epochs, lr, weight_decay, batch_size, train_dataset, checkpoint_path
         else:
             net.build_with_vgg(checkpoint_path, weight_decay)
             global_step = tf.Variable(0, trainable=False)
-            net.init_loss_and_optimizer(lr, global_step=global_step)
-
-        # for op in graph.get_operations():
-        #     print(op.name)
+            net.init_loss_and_optimizer(lr, momentum=momentum, global_step=global_step)
 
         # summary loggers initialization
         summary_writer = tf.summary.FileWriter(log_dir)
@@ -150,20 +148,15 @@ def train(n_epochs, lr, weight_decay, batch_size, train_dataset, checkpoint_path
             print('-Checkpoint "%s" was created' % checkpoint_path)
 
 
-def test(batch_size, data_set, log_dir='./', profile=SSD_300):
-    pass
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data-dir', default='/data/Workspace/data/VOCdevkit/VOC2012', help='data directory')
-    parser.add_argument('--data-parser', default='pascal-voc', help='data parser name')     # TODO:
-    parser.add_argument('--dest-dir', default='checkpoints', help='output directory')
-    parser.add_argument('--experiment', default='ssd', help='experiment name')
+    parser.add_argument('-s', '--data-dir', default='/data/Workspace/data/VOCdevkit/VOC2012', help='data directory')
+    parser.add_argument('-d', '--dest-dir', default='checkpoints', help='output directory')
+    parser.add_argument('-e', '--experiment', default='ssd', help='experiment name')
     parser.add_argument('--log-dir', default="tb", help='log directory')
     parser.add_argument('--checkpoint', default='/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt',
                         help='path to pretrained VGG16 model(checkpoint file)')
-    parser.add_argument('--continue', action='store_true', default=False)
+    parser.add_argument('-c', '--continue_training', action='store_true', default=False)
     parser.add_argument('--n-epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--batch-size', type=int, default=20, help='batch size')
     parser.add_argument('--lr', type=int, default=0.0001, help='learning rate')
@@ -174,16 +167,18 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     checkpoints_dir = utils.make_dir(os.path.join(args.dest_dir, args.experiment))
+
     data_dir = args.data_dir
-    log_dir = args.log_dir
-    experiment_name = args.experiment
-    checkpoint = args.checkpoint
-    n_epochs = args.n_epochs
-    batch_size = args.batch_size
-    lr = args.lr
-    momentum = args.momentum
-    weight_decay = args.weight_decay
-
     ds = dataset.VocDataset(data_dir, '/data/Workspace/data/VOCdevkit/vokdata.pkl')
+    val_dataset = ds.extract(args.val_frac)
 
-    train(n_epochs, lr, weight_decay, batch_size, ds, checkpoint, checkpoints_dir)
+    train(n_epochs=args.n_epochs,
+          lr=args.lr,
+          weight_decay=args.weight_decay,
+          batch_size=args.batch_size,
+          momentum=args.momentum,
+          datasets=[ds, val_dataset],
+          checkpoint_path=args.checkpoint,
+          checkpoints_dir=checkpoints_dir,
+          log_dir=args.log_dir,
+          continue_training=args.continue_training)

@@ -87,6 +87,7 @@ class SSD:
         Loads pretrained checkpoint.
         :param metagraph_path: path to ".meta" file
         :param checkpoint_dir:
+        :param continue_training: loads losses and optimizes to continue training if its True
         :return:
         """
         if checkpoint_dir is None:
