@@ -55,7 +55,7 @@ def init_summaries(session, writer, label_names):
     return tps, vps, tls, vls
 
 
-def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
+def train(n_epochs, lr, weight_decay, batch_size, train_dataset, checkpoint_path,
           checkpoints_dir, log_dir='./', profile=SSD_300, continue_training=False):
 
     tf.reset_default_graph()
@@ -65,7 +65,7 @@ def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
 
     val_dataset = train_dataset.extract(0.05)
 
-    def calc_and_print_stat(gt, result, batch_counter, total_loss, loc_loss, conf_loss):
+    def calc_and_print_stat(e, gt, result, batch_counter, total_loss, loc_loss, conf_loss):
         for i in range(result.shape[0]):
             detections = utils.get_filtered_result_bboxes(result[i], label_generator.default_boxes_rel, profile.imgsize)
             gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
@@ -73,7 +73,7 @@ def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
             precision_metric_global.add(gt_objects, detections)
 
         if batch_counter % 10 == 0:
-            print("Batch[{}] loss: {}, {}, {}".format(batch_counter, total_loss, loc_loss, conf_loss))
+            print("E{}/Batch[{}] loss: {}, {}, {}".format(e, batch_counter, total_loss, loc_loss, conf_loss))
             precisions, mean = precision_metric_local.calc_and_reset()
             print("Local prec: ", mean, precisions)
 
@@ -83,7 +83,7 @@ def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
         if continue_training:
             net.load_metagraph(checkpoint_path, continue_training=continue_training)
         else:
-            net.build_with_vgg(checkpoint_path)
+            net.build_with_vgg(checkpoint_path, weight_decay)
             global_step = tf.Variable(0, trainable=False)
             net.init_loss_and_optimizer(lr, global_step=global_step)
 
@@ -112,7 +112,7 @@ def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
                     [net.output, net.loss, net.localization_loss, net.confidence_loss, net.optimizer],
                     feed_dict=feed)
 
-                calc_and_print_stat(gt, result, batch_counter, total_loss, loc_loss, conf_loss)
+                calc_and_print_stat(epoch, gt, result, batch_counter, total_loss, loc_loss, conf_loss)
 
             train_loss_summary.append(epoch, {'loss': total_loss,
                                               'confidence_loss': conf_loss,
@@ -132,7 +132,7 @@ def train(n_epochs, lr, batch_size, train_dataset, checkpoint_path,
                     [net.output, net.loss, net.localization_loss, net.confidence_loss],
                     feed_dict=feed)
 
-                calc_and_print_stat(gt, result, batch_counter, total_loss, loc_loss, conf_loss)
+                calc_and_print_stat(epoch, gt, result, batch_counter, total_loss, loc_loss, conf_loss)
 
             val_loss_summary.append(epoch, {'loss': total_loss,
                                             'confidence_loss': conf_loss,
@@ -166,9 +166,9 @@ if __name__ == '__main__':
     parser.add_argument('--continue', action='store_true', default=False)
     parser.add_argument('--n-epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--batch-size', type=int, default=20, help='batch size')
-    parser.add_argument('--lr', type=int, default=0.00008, help='learning rate')
+    parser.add_argument('--lr', type=int, default=0.0001, help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.9, help='momentum for the optimizer')
-    parser.add_argument('--weight-decay', type=float, default=0.001, help='L2 normalization factor')
+    parser.add_argument('--weight-decay', type=float, default=0.0005, help='L2 normalization factor')
     parser.add_argument('--val-frac', type=float, default=0.05, help='the fraction of validation data')
 
     args = parser.parse_args()
@@ -186,4 +186,4 @@ if __name__ == '__main__':
 
     ds = dataset.VocDataset(data_dir, '/data/Workspace/data/VOCdevkit/vokdata.pkl')
 
-    train(n_epochs, lr, batch_size, ds, checkpoint, checkpoints_dir)
+    train(n_epochs, lr, weight_decay, batch_size, ds, checkpoint, checkpoints_dir)

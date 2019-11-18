@@ -26,13 +26,14 @@ DetectedObject = namedtuple('DetectedObject', ['rect', 'label', 'score'])
 
 
 def norm_rect_to_rect(img_size: tuple, rect: NormRect):
-    xc = rect.xc * img_size[0]
-    yc = rect.yc * img_size[1]
-    w_half = rect.w * img_size[0] / 2.0
-    h_half = rect.h * img_size[1] / 2.0
-    x0, x1 = max(0, xc - w_half), min(img_size[1] - 1, xc + w_half)
-    y0, y1 = max(0, yc - h_half), min(img_size[0] - 1, yc + h_half)
-    # TODO: OverflowError: cannot convert float infinity to integer
+    xc = rect.xc * img_size[1]
+    yc = rect.yc * img_size[0]
+    w_half = rect.w * img_size[1] / 2.0
+    h_half = rect.h * img_size[0] / 2.0
+    x0 = min(max(0, xc - w_half), img_size[1] - 1)
+    x1 = max(x0, min(img_size[1] - 1, xc + w_half))
+    y0 = min(max(0, yc - h_half), img_size[0] - 1)
+    y1 = max(y0, min(img_size[0] - 1, yc + h_half))
     return Rect(int(x0), int(y0), int(x1), int(y1))
 
 

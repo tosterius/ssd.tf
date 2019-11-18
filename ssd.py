@@ -62,18 +62,24 @@ class SSD:
         self.localization_loss = None
         self.l2_reg_loss = 0
 
-    def build_with_vgg(self, vgg_ckpt_path):
+    def build_with_vgg(self, vgg_ckpt_path, reg_scale=0.0005):
+        """
+        Loads pretrained vgg model and creates ssd layers
+        :param vgg_ckpt_path: vgg checkpoint path
+        :param reg_scale: feature layers regularization scale
+        :return:
+        """
         with tf.variable_scope('image_input'):
             shape = (None, self.profile.imgsize[0], self.profile.imgsize[1], 3)
             self.input = tf.placeholder(tf.float32, shape, name='image_input')
 
-        self.__init_vgg_16_part()
+        self.__init_vgg_16_part(reg_scale=reg_scale)
 
         exclude_layers = ['vgg_16/fc8']
         saver = tf.train.Saver(get_variables_to_restore(exclude=exclude_layers))
         saver.restore(self.session, vgg_ckpt_path)
 
-        self.__init_ssd_part()
+        self.__init_ssd_part(reg_scale=reg_scale)
         self.__init_detection_layers()
 
     def load_metagraph(self, metagraph_path, checkpoint_dir=None, continue_training=False):
@@ -100,7 +106,7 @@ class SSD:
             self.confidence_loss = self.session.graph.get_tensor_by_name('confidence_loss/confidence_loss:0')
             self.localization_loss = self.session.graph.get_tensor_by_name('localization_loss/localization_loss:0')
 
-    def __init_vgg_16_part(self, scope='vgg_16', is_training=True, dropout_keep_prob=0.5, reg_scale=0.005):
+    def __init_vgg_16_part(self, scope='vgg_16', is_training=True, dropout_keep_prob=0.5, reg_scale=0.0005):
         """
         Creates vgg16 model
         """
@@ -146,16 +152,16 @@ class SSD:
                 self.net = tf.nn.conv2d(self.net, self.vgg_fc6_w, strides=[1, 1, 1, 1], padding='SAME')
                 self.net = tf.nn.bias_add(self.net, self.vgg_fc6_b)
                 self.net = tf.nn.relu(self.net)
-                self.l2_reg_loss += tf.nn.l2_loss(self.vgg_fc6_w)
+                # self.l2_reg_loss += tf.nn.l2_loss(self.vgg_fc6_w)
             with tf.variable_scope('conv7'):
                 self.net = tf.nn.conv2d(self.net, self.vgg_fc7_w, strides=[1, 1, 1, 1], padding='SAME')
                 self.net = tf.nn.bias_add(self.net, self.vgg_fc7_b)
                 self.net = tf.nn.relu(self.net)
-                self.l2_reg_loss += tf.nn.l2_loss(self.vgg_fc7_w)
+                # self.l2_reg_loss += tf.nn.l2_loss(self.vgg_fc7_w)
                 self.feature_maps.append(self.net)
         # TODO l2 norm?
 
-    def __init_ssd_part(self, scope='ssd_300', reg_scale=0.005):
+    def __init_ssd_part(self, scope='ssd_300', reg_scale=0.0005):
         self.__build_vgg_mods()
         with variable_scope.variable_scope(scope, 'ssd_300', [self.net]) as sc:
             end_points_collection = sc.original_name_scope + '_end_points'
@@ -200,7 +206,7 @@ class SSD:
             self.detections = predictors[:, :, self.n_classes:]
             self.output = tf.concat([self.classifier, self.detections], axis=-1, name='result')
 
-    def init_loss_and_optimizer(self, lr, momentum=0.9, global_step=None, decay=0.005):
+    def init_loss_and_optimizer(self, lr, momentum=0.9, global_step=None, decay=0.0005):
         """
         Creates training objective
         :param lr:
