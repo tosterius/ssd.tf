@@ -281,9 +281,13 @@ class SSD:
             l2_feature_reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             l2_det_loss = tf.multiply(decay, self.l2_reg_loss, name='l2_loss')
             self.l2_reg_loss = l2_det_loss + tf.reduce_sum(l2_feature_reg_losses)
-            loss = tf.add(self.localization_loss, self.confidence_loss, name='loc_conf_loss')
-            self.loss = tf.add(loss, self.l2_reg_loss, name='loss')
+            detection_loss = tf.add(self.localization_loss, self.confidence_loss, name='loc_conf_loss')
+            self.loss = tf.add(detection_loss, self.l2_reg_loss, name='loss')
 
         with tf.variable_scope('optimizer'):
             self.optimizer = tf.train.MomentumOptimizer(lr, momentum)
             self.optimizer = self.optimizer.minimize(self.loss, global_step=global_step, name='optimizer')
+
+    def losses(self):
+        return {'loss': self.loss, 'confidence_loss': self.confidence_loss,
+                'localization_loss': self.localization_loss, 'regularization_loss': self.l2_reg_loss}

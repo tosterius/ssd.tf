@@ -134,11 +134,11 @@ class VocDataset(Dataset):
     def __init__(self, root_directory=None, pickled_path=None):
         Dataset.__init__(self)
 
-        self.label_names = ['background',
-                            'aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
+        self.label_names = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
                             'bus', 'car', 'cat', 'chair', 'cow',
                             'diningtable', 'dog', 'horse', 'motorbike', 'person',
-                            'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
+                            'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor',
+                            'background']
 
         self.label_map = {key: value for (value, key) in enumerate(self.label_names)}
 

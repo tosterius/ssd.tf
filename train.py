@@ -66,7 +66,7 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
     train_dataset = datasets[0]
     val_dataset = datasets[1]
 
-    def calc_and_print_stat(e, gt, result, batch_counter, total_loss, loc_loss, conf_loss):
+    def calc_and_print_stat(e, gt, result, batch_counter, losses):
         for i in range(result.shape[0]):
             detections = utils.get_filtered_result_bboxes(result[i], label_generator.default_boxes_rel, profile.imgsize)
             gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
@@ -74,7 +74,7 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
             precision_metric_global.add(gt_objects, detections)
 
         if batch_counter % 10 == 0:
-            print("E{}/Batch[{}] loss: {}, {}, {}".format(e, batch_counter, total_loss, loc_loss, conf_loss))
+            print("E{}:B[{}] losses: {}".format(e, batch_counter, str(losses)))
             precisions, mean = precision_metric_local.calc_and_reset()
             print("Local prec: ", mean, precisions)
 
@@ -107,15 +107,11 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
             train_generator = label_generator.get(train_dataset, batch_size, image_loader)
             for batch_counter, (x, y, gt) in enumerate(train_generator):
                 feed = {net.input: x, net.gt: y}
-                result, total_loss, loc_loss, conf_loss, _ = session.run(
-                    [net.output, net.loss, net.localization_loss, net.confidence_loss, net.optimizer],
-                    feed_dict=feed)
+                result, losses, _ = session.run([net.output, net.losses(), net.optimizer], feed_dict=feed)
 
-                calc_and_print_stat(epoch, gt, result, batch_counter, total_loss, loc_loss, conf_loss)
+                calc_and_print_stat(epoch, gt, result, batch_counter, losses)
 
-            train_loss_summary.append(epoch, {'loss': total_loss,
-                                              'confidence_loss': conf_loss,
-                                              'localization_loss': loc_loss})
+            train_loss_summary.append(epoch, losses)
 
             precisions, mean = precision_metric_global.calc_and_reset()
             precisions = ds.decode_dict(precisions)
@@ -127,15 +123,11 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
             val_generator = label_generator.get(val_dataset, batch_size, image_loader)
             for batch_counter, (x, y, gt) in enumerate(val_generator):
                 feed = {net.input: x, net.gt: y}
-                result, total_loss, loc_loss, conf_loss = session.run(
-                    [net.output, net.loss, net.localization_loss, net.confidence_loss],
-                    feed_dict=feed)
+                result, losses = session.run([net.output, net.losses], feed_dict=feed)
 
-                calc_and_print_stat(epoch, gt, result, batch_counter, total_loss, loc_loss, conf_loss)
+                calc_and_print_stat(epoch, gt, result, batch_counter, losses)
 
-            val_loss_summary.append(epoch, {'loss': total_loss,
-                                            'confidence_loss': conf_loss,
-                                            'localization_loss': loc_loss})
+            val_loss_summary.append(epoch, losses)
 
             precisions, mean = precision_metric_global.calc_and_reset()
             precisions = ds.decode_dict(precisions)
