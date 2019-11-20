@@ -63,7 +63,7 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
     precision_metric_local = utils.PrecisionMetric()
     precision_metric_global = utils.PrecisionMetric()
 
-    train_dataset = datasets[1]
+    train_dataset = datasets[0]
     val_dataset = datasets[1]
 
     def calc_and_print_stat(e, gt, result, batch_counter, total_loss, loc_loss, conf_loss):
@@ -98,6 +98,7 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
 
         label_generator = dataset.LabelGenerator(profile)
         image_loader = dataset.ImageLoader(profile.imgsize)
+        image_loader.processors.append(dataset.GaussianNoizer())
 
         print('Dataset size: {}'.format(len(ds.data_list)))
         for epoch in range(n_epochs):
@@ -159,9 +160,9 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--continue_training', action='store_true', default=False)
     parser.add_argument('--n-epochs', type=int, default=100, help='number of epochs')
     parser.add_argument('--batch-size', type=int, default=20, help='batch size')
-    parser.add_argument('--lr', type=int, default=0.0001, help='learning rate')
+    parser.add_argument('--lr', type=int, default=0.000075, help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.9, help='momentum for the optimizer')
-    parser.add_argument('--weight-decay', type=float, default=0.0005, help='L2 normalization factor')
+    parser.add_argument('--weight-decay', type=float, default=0.005, help='L2 normalization factor')
     parser.add_argument('--val-frac', type=float, default=0.05, help='the fraction of validation data')
 
     args = parser.parse_args()

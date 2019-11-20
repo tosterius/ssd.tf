@@ -38,10 +38,10 @@ def norm_rect_to_rect(img_size: tuple, rect: NormRect):
 
 
 def rect_to_norm_rect(img_size: tuple, rect: Rect):
-    xc = (rect.x0 + rect.x1) / 2.0 / img_size[0]
-    yc = (rect.y0 + rect.y1) / 2.0 / img_size[1]
-    w = float(rect.x1 - rect.x0) / img_size[0]
-    h = float(rect.y1 - rect.y0) / img_size[1]
+    xc = (rect.x0 + rect.x1) / 2.0 / img_size[1]
+    yc = (rect.y0 + rect.y1) / 2.0 / img_size[0]
+    w = float(rect.x1 - rect.x0) / img_size[1]
+    h = float(rect.y1 - rect.y0) / img_size[0]
     return NormRect(xc, yc, w, h)
 
 
@@ -178,7 +178,7 @@ def net_predictions_to_bboxes(predictions, default_boxes, confidence_thresh, num
 
 
 def get_filtered_result_bboxes(results, default_boxes, img_size,
-                               confidence_thresh=0.02, overlap_thresh=0.5, number_thresh=100):
+                               confidence_thresh=0.02, overlap_thresh=0.45, number_thresh=100):
     result = []
     decoded_detections = net_predictions_to_bboxes(results, default_boxes, confidence_thresh, number_thresh)
     grouped_by_label_detections = {}

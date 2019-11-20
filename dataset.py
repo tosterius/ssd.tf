@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 import xml.etree.ElementTree as ET
 from collections import namedtuple
-from random import shuffle
+import random
 from profiles import SSD_300
 import utils
 
@@ -187,24 +187,28 @@ class VocDataset(Dataset):
         self.data_list.append(labeled_file)
 
 
+class GaussianNoizer:
+    def __call__(self, labeled_file):
+        data = labeled_file.data
+        k = random.choice([3, 5])
+        blured = cv2.GaussianBlur(data, (k, k), 0)
+        return LabeledImage(blured, labeled_file.objects)
+
+
 class ImageLoader:
     def __init__(self, img_size):
         self.img_size = img_size
+        self.processors = []
 
     def __call__(self, labeled_file):
         img_raw = cv2.imread(labeled_file.filepath, cv2.IMREAD_COLOR)
         data = cv2.resize(img_raw, self.img_size).astype(np.float)
         objects = labeled_file.objects
-        return LabeledImage(data, objects)
-
-
-class ImageAugmentator:
-    def __init__(self):
-        pass
-
-    def __call__(self, labeled_file):
-        # preprocessing TODO:
-        return labeled_file
+        ret = LabeledImage(data, objects)
+        for processor in self.processors:
+            if random.choice([True, False]):
+                ret = processor(ret)
+        return ret
 
 
 class LabelGenerator:
@@ -217,7 +221,7 @@ class LabelGenerator:
 
     def get(self, dataset, batch_size, preprocessor):
         def generator(ds, batch_size, preprocessor):
-            shuffle(ds.data_list)
+            random.shuffle(ds.data_list)
             n_classes = len(ds.label_names)
             data, labels, gt = [], [], []
             n = len(ds.data_list)
