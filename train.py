@@ -49,7 +49,7 @@ def init_summaries(session, writer, label_names):
     tps = Summary(session, writer, 'train_precision', label_names)
     vps = Summary(session, writer, 'val_precision', label_names)
 
-    loss_names = ['loss', 'confidence_loss', 'localization_loss']
+    loss_names = ['loss', 'confidence_loss', 'localization_loss', 'regularization_loss']
     tls = Summary(session, writer, 'train_loss', loss_names)
     vls = Summary(session, writer, 'val_loss', loss_names)
     return tps, vps, tls, vls
@@ -110,7 +110,7 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
                 result, losses, _ = session.run([net.output, net.losses(), net.optimizer], feed_dict=feed)
 
                 calc_and_print_stat(epoch, gt, result, batch_counter, losses)
-
+                break
             train_loss_summary.append(epoch, losses)
 
             precisions, mean = precision_metric_global.calc_and_reset()
