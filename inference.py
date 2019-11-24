@@ -14,7 +14,7 @@ def run(input_path, output_path, checkpoint_path, batch_size=20, profile=SSD_300
     ds = dataset.VocDataset()
     utils.make_dir(output_path)
     tf.reset_default_graph()
-    default_boxes_rel = utils.get_prior_boxes(profile)
+    default_boxes_rel = utils.get_default_boxes(profile)
 
     with tf.Session() as session:
 
@@ -35,7 +35,8 @@ def run(input_path, output_path, checkpoint_path, batch_size=20, profile=SSD_300
 
             detections_per_file = []
             for i in range(result.shape[0]):
-                detections = utils.get_filtered_result_bboxes(result[i], default_boxes_rel, profile.imgsize)
+                detections = utils.get_filtered_result_bboxes(result[i], default_boxes_rel, profile.imgsize,
+                                                              number_thresh=2)
                 detections_per_file.append([file_batch[i], detections])
 
             for filepath, dets in detections_per_file:
@@ -49,7 +50,7 @@ if __name__ == '__main__':
     parser.add_argument('--data-dir', default='/data/Workspace/data/test', help='data directory')
     parser.add_argument('--dest-dir', default='./result', help='output directory')
     parser.add_argument('--checkpoint',
-                        default='/data/Workspace/github/ssd.tf/checkpoints/ssd/checkpoint-epoch-009.ckpt.meta',
+                        default='/data/Workspace/github/ssd.tf/checkpoints/ssd/checkpoint-epoch-099.ckpt.meta',
                         help='path to pretrained model(checkpoint file)')
     parser.add_argument('--batch-size', type=int, default=20, help='batch size')
     args = parser.parse_args()

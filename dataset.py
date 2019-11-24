@@ -215,7 +215,7 @@ class LabelGenerator:
     def __init__(self, profile):
         self.overlap_thresh = 0.5
         self.img_size = profile.imgsize
-        self.default_boxes_rel = utils.get_prior_boxes(profile)
+        self.default_boxes_rel = utils.get_default_boxes(profile)
         self.default_boxes_abs = default_boxes_to_array(self.default_boxes_rel, self.img_size)
         self.n_prior_boxes = len(self.default_boxes_rel)
 

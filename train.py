@@ -110,7 +110,6 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
                 result, losses, _ = session.run([net.output, net.losses(), net.optimizer], feed_dict=feed)
 
                 calc_and_print_stat(epoch, gt, result, batch_counter, losses)
-                break
             train_loss_summary.append(epoch, losses)
 
             precisions, mean = precision_metric_global.calc_and_reset()
@@ -123,10 +122,9 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
             val_generator = label_generator.get(val_dataset, batch_size, image_loader)
             for batch_counter, (x, y, gt) in enumerate(val_generator):
                 feed = {net.input: x, net.gt: y}
-                result, losses = session.run([net.output, net.losses], feed_dict=feed)
+                result, losses = session.run([net.output, net.losses()], feed_dict=feed)
 
                 calc_and_print_stat(epoch, gt, result, batch_counter, losses)
-
             val_loss_summary.append(epoch, losses)
 
             precisions, mean = precision_metric_global.calc_and_reset()
@@ -137,7 +135,7 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
             summary_writer.flush()
 
             checkpoint_path = os.path.join(checkpoints_dir, 'checkpoint-epoch-%03d.ckpt' % epoch)
-            saver.save(session, checkpoint_path)
+            saver.save(session, checkpoint_path, global_step=global_step)
             print('-Checkpoint "%s" was created' % checkpoint_path)
 
 

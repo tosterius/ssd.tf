@@ -26,6 +26,12 @@ DetectedObject = namedtuple('DetectedObject', ['rect', 'label', 'score'])
 
 
 def norm_rect_to_rect(img_size: tuple, rect: NormRect):
+    """
+    Safely converts normalized rect into rect with absolute coordinates
+    :param img_size:
+    :param rect:
+    :return:
+    """
     xc = rect.xc * img_size[1]
     yc = rect.yc * img_size[0]
     w_half = rect.w * img_size[1] / 2.0
@@ -38,6 +44,12 @@ def norm_rect_to_rect(img_size: tuple, rect: NormRect):
 
 
 def rect_to_norm_rect(img_size: tuple, rect: Rect):
+    """
+    Normalizes a rect
+    :param img_size:
+    :param rect:
+    :return:
+    """
     xc = (rect.x0 + rect.x1) / 2.0 / img_size[1]
     yc = (rect.y0 + rect.y1) / 2.0 / img_size[0]
     w = float(rect.x1 - rect.x0) / img_size[1]
@@ -45,9 +57,9 @@ def rect_to_norm_rect(img_size: tuple, rect: Rect):
     return NormRect(xc, yc, w, h)
 
 
-def get_prior_boxes(profile):
+def get_default_boxes(profile):
     """
-    Get sizes of default bounding boxes for all scales.
+    Computes sizes of default bounding boxes for all scales.
     See https://arxiv.org/pdf/1512.02325.pdf page 6
     :param profile:
     :return:
@@ -163,6 +175,14 @@ def decode_location(det_rect: np.ndarray, default_box_rect: NormRect):
 
 
 def net_predictions_to_bboxes(predictions, default_boxes, confidence_thresh, number_thresh):
+    """
+    Converts network prediction to human understandable format
+    :param predictions: network output of sizes (num_of_default_boxes, num_of_classes + 1(bg) + 4(rect))
+    :param default_boxes:
+    :param confidence_thresh:
+    :param number_thresh:
+    :return:  [NormRect, label, score]
+    """
     decoded_detections = []
     n_classes = predictions.shape[1] - 4
     bbox_labels = np.argmax(predictions[:, :n_classes - 1], axis=1)
@@ -179,10 +199,22 @@ def net_predictions_to_bboxes(predictions, default_boxes, confidence_thresh, num
 
 def get_filtered_result_bboxes(results, default_boxes, img_size,
                                confidence_thresh=0.02, overlap_thresh=0.45, number_thresh=100):
+    """
+    Converts network output to human understandable format and filters it on the basis of thresholds
+    :param results: network output of sizes (batch_size, num_of_default_boxes, num_of_classes + 1(bg) + 4(rect))
+    :param default_boxes: default boxes produced by get_default_boxes
+    :param img_size: network input image size
+    :param confidence_thresh:
+    :param overlap_thresh: nms threshold
+    :param number_thresh: is used to filter top K=number_thresh boxes with the highest confidence score
+    :return:
+    """
     result = []
+
     decoded_detections = net_predictions_to_bboxes(results, default_boxes, confidence_thresh, number_thresh)
     grouped_by_label_detections = {}
     for det in decoded_detections:
+        # det here is like [NormRect, label, score]
         det.append(norm_rect_to_rect(img_size, det[0]))
         if det[1] in grouped_by_label_detections:
             grouped_by_label_detections[det[1]].append(det)
