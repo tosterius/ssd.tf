@@ -187,12 +187,21 @@ class VocDataset(Dataset):
         self.data_list.append(labeled_file)
 
 
-class GaussianNoizer:
+class GaussianNoiser:
     def __call__(self, labeled_file):
         data = labeled_file.data
         k = random.choice([3, 5])
         blured = cv2.GaussianBlur(data, (k, k), 0)
         return LabeledImage(blured, labeled_file.objects)
+
+
+class SpeckleNoiser:
+    def __call__(self, labeled_file):
+        data = labeled_file.data
+        noise = np.random.normal(0, 0.05, data.shape)
+        out = data + data * noise
+        out = np.clip(out, 0, 255)
+        return LabeledImage(out, labeled_file.objects)
 
 
 class ImageLoader:
@@ -212,6 +221,10 @@ class ImageLoader:
 
 
 class LabelGenerator:
+    """
+    A LabelGenerator object processes the records from dataset
+    and generates input data for the SSD net
+    """
     def __init__(self, profile):
         self.overlap_thresh = 0.5
         self.img_size = profile.imgsize

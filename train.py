@@ -68,7 +68,7 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
 
     def calc_and_print_stat(e, gt, result, batch_counter, losses):
         for i in range(result.shape[0]):
-            detections = utils.get_filtered_result_bboxes(result[i], label_generator.default_boxes_rel, profile.imgsize)
+            detections = utils.get_filtered_result_bboxes(result[i], train_label_generator.default_boxes_rel, profile.imgsize)
             gt_objects = dataset.lo_to_abs_rects(profile.imgsize, gt[i])
             precision_metric_local.add(gt_objects, detections)
             precision_metric_global.add(gt_objects, detections)
@@ -83,9 +83,11 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
         net = ssd.SSD(session, profile, len(train_dataset.label_names))
         if continue_training:
             net.load_metagraph(checkpoint_path, continue_training=continue_training)
+            global_step = session.graph.get_tensor_by_name('global_step:0')
         else:
             net.build_with_vgg(checkpoint_path, weight_decay)
-            global_step = tf.Variable(0, trainable=False)
+            global_step = tf.Variable(0, trainable=False, name='global_step')
+            lr = tf.train.piecewise_constant(global_step, [10000, 40000, 80000], [lr, lr / 2.2, lr / 4, lr / 10])
             net.init_loss_and_optimizer(lr, momentum=momentum, global_step=global_step)
 
         # summary loggers initialization
@@ -96,15 +98,19 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
         saver = tf.train.Saver(max_to_keep=10)
         initialize_variables(session)
 
-        label_generator = dataset.LabelGenerator(profile)
+        # setting up LabelGenerators and noise-makers
+        train_label_generator = dataset.LabelGenerator(profile)
         image_loader = dataset.ImageLoader(profile.imgsize)
-        image_loader.processors.append(dataset.GaussianNoizer())
+        image_loader.processors.append(dataset.GaussianNoiser())
+        image_loader.processors.append(dataset.SpeckleNoiser())
+        val_label_generator = dataset.LabelGenerator(profile)
 
-        print('Dataset size: {}'.format(len(ds.data_list)))
+        print('Train dataset size: {}'.format(len(train_dataset.data_list)))
+        print('Validation dataset size: {}'.format(len(val_dataset.data_list)))
         for epoch in range(n_epochs):
             print('Epoch [{}/{}]'.format(epoch, n_epochs))
-            # Train
-            train_generator = label_generator.get(train_dataset, batch_size, image_loader)
+            # Training
+            train_generator = train_label_generator.get(train_dataset, batch_size, image_loader)
             for batch_counter, (x, y, gt) in enumerate(train_generator):
                 feed = {net.input: x, net.gt: y}
                 result, losses, _ = session.run([net.output, net.losses(), net.optimizer], feed_dict=feed)
@@ -113,13 +119,13 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
             train_loss_summary.append(epoch, losses)
 
             precisions, mean = precision_metric_global.calc_and_reset()
-            precisions = ds.decode_dict(precisions)
+            precisions = train_dataset.decode_dict(precisions)
             print("[T] Global prec: ", mean, precisions)
             train_precision_summary.append(epoch, precisions)
 
             # Validation
             print('--Validation: ')
-            val_generator = label_generator.get(val_dataset, batch_size, image_loader)
+            val_generator = val_label_generator.get(val_dataset, batch_size, image_loader)
             for batch_counter, (x, y, gt) in enumerate(val_generator):
                 feed = {net.input: x, net.gt: y}
                 result, losses = session.run([net.output, net.losses()], feed_dict=feed)
@@ -128,7 +134,7 @@ def train(n_epochs, lr, weight_decay, batch_size, momentum, datasets, checkpoint
             val_loss_summary.append(epoch, losses)
 
             precisions, mean = precision_metric_global.calc_and_reset()
-            precisions = ds.decode_dict(precisions)
+            precisions = val_dataset.decode_dict(precisions)
             print("[V] Global prec: ", mean, precisions)
             val_precision_summary.append(epoch, precisions)
 
@@ -148,9 +154,9 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', default='/data/Downloads/vgg_16_2016_08_28/vgg_16.ckpt',
                         help='path to pretrained VGG16 model(checkpoint file)')
     parser.add_argument('-c', '--continue_training', action='store_true', default=False)
-    parser.add_argument('--n-epochs', type=int, default=100, help='number of epochs')
-    parser.add_argument('--batch-size', type=int, default=20, help='batch size')
-    parser.add_argument('--lr', type=int, default=0.000075, help='learning rate')
+    parser.add_argument('--n-epochs', type=int, default=300, help='number of epochs')
+    parser.add_argument('--batch-size', type=int, default=22, help='batch size')
+    parser.add_argument('--lr', type=int, default=0.0002, help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.9, help='momentum for the optimizer')
     parser.add_argument('--weight-decay', type=float, default=0.005, help='L2 normalization factor')
     parser.add_argument('--val-frac', type=float, default=0.05, help='the fraction of validation data')
